@@ -9,3 +9,6 @@ results/rigorous_run*.log
 # Build artifacts
 *.egg-info/
 dist/
+
+# Demo/placeholder seal — never commit a DO_NOT_TRUST seal
+.hermes-seal.yaml

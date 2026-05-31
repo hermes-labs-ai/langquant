@@ -9,11 +9,13 @@
 
 ## LPCI: Statefulness Through Language for Stateless Models
 
-**Validated 2026-03-28 — Hermes Labs**
+langquant is a scaffold-as-state research artifact that tests whether a refreshing language scaffold can serve as the sole working state for a stateless LLM.
 
-A stateless LLM maintained full conversational coherence across 20 turns with **zero conversation history**. The model never saw any prior messages. A structured language scaffold — refreshed every turn — was the sole state representation.
+**Single A/B run, 2026-03-28 — Hermes Labs**
 
-Transfer entropy analysis confirms the scaffold is a **complete Markov state**: knowing what the scaffold contains right now, knowing what it contained last turn adds nothing. The text IS the state.
+In one A/B run (n=1 per condition), a stateless LLM held conversational coherence across 20 turns with **zero conversation history**. The model never saw any prior messages — a structured language scaffold, refreshed every turn, was the sole state representation.
+
+Transfer entropy analysis is consistent with the scaffold approximating a Markov state: conditioning on the current scaffold left little measurable information flow from prior turns (TE dropped from 0.608 naked to 0.085 compressed — a substantial reduction, not zero). This is a single observation, not a proof; see Caveats.
 
 > `input is output is input is output`
 
@@ -48,7 +50,7 @@ Every turn:  [scaffold: K tokens, refreshed] + [current message]
 
 The scaffold doesn't grow. It **compresses**. Turn 20 and turn 2,000 look identical from the model's perspective.
 
-## What We Proved
+## What We Observed
 
 ### Setup
 
@@ -89,14 +91,14 @@ Scaffold grows at ~23 tokens/turn. Conversation grows at ~97 tokens/turn. The co
 
 Using Shannon entropy, mutual information, KL divergence, and transfer entropy (via pyitlib + scipy):
 
-| Metric | Naked | Compressed | Meaning |
+| Metric | Naked | Compressed | Reading |
 |---|---|---|---|
-| Transfer entropy | 0.608 bits | **0.085 bits** | Compressed scaffold is Markov (self-contained state) |
+| Transfer entropy | 0.608 bits | **0.085 bits** | Compressed scaffold left little measurable flow from prior turns |
 | Scaffold entropy | 7.30 | 7.78 | Compressed carries more information per token |
 | KL divergence (t1→t20) | — | 0.20 → 0.48 | Conditions diverge over time |
 | Scaffold-response MI | 0.49 bits | 0.24 bits | Different information coupling |
 
-**The transfer entropy finding is the key result.** TE ≈ 0 for the compressed scaffold means each turn's scaffold is a complete state representation. Knowing previous scaffolds adds no information. The scaffold is Markov — which is exactly the LPCI thesis stated in information-theoretic terms.
+**The transfer entropy drop is the central finding.** Conditioning on the current compressed scaffold cut transfer entropy from 0.608 to 0.085 bits — a substantial reduction (not zero), consistent with the scaffold carrying most of the per-turn state in this run. This is the direction the LPCI hypothesis predicts; with n=1 per condition over 20 turns it is suggestive, not a proof. See Caveats.
 
 ## Architecture
 
@@ -185,7 +187,7 @@ Separate from LPCI, we ran a single-shot experiment testing 5 scaffold condition
 | `lpci_test.py` | A/B continuity test: 20 turns × 2 conditions, probes, scaffold evaluation, delta tracing |
 | `analyze_results.py` | Information-theoretic analysis: MI, KL divergence, transfer entropy, significance tests |
 | `run_experiment.py` | Single-shot scaffold amplification harness (matrix run) |
-| `results/lpci_ab_test.jsonl` | LPCI proof data: 40 rows, full scaffold snapshots, delta traces, probe evaluations |
+| `results/lpci_ab_test.jsonl` | LPCI A/B run data: 40 rows, full scaffold snapshots, delta traces, probe evaluations |
 | `results/full_run_v1.jsonl` | 619-trial matrix run: 4 models × 5 conditions × 12 tasks × 3 runs |
 | `LOG.md` | Complete project log |
 | `TODO.md` | Future work |
@@ -212,11 +214,7 @@ Formulated ~summer 2025 as **Linguistically Persistent Cognitive Interface**:
 
 ## About Hermes Labs
 
-[Hermes Labs](https://hermes-labs.ai) is the AI audit infrastructure company behind LangQuant. We build EU AI Act compliance tooling, ISO 42001 evidence bundles, and agent-level risk testing for enterprises shipping AI into regulated environments.
-
-**Our OSS philosophy:** everything we release is MIT or Apache-2.0, fully free, no SaaS tier. We sell audit work, not licenses. The tools we release are what we use internally.
-
-LangQuant is research output — the proof-of-concept for a linguistic-scaffold interface for stateless LLMs. If you want the engineering tools we build on top (static agent linters, runtime policy guards, jailbreak regression, scoring), browse our full [OSS audit stack](https://github.com/hermes-labs-ai).
+Hermes Labs is an independent AI-reliability lab building open-source tools that catch silent failure modes in production AI. More at [hermes-labs.ai](https://hermes-labs.ai).
 
 ---
 
