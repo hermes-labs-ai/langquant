@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "langquant: a scaffold-as-state research artifact for stateless-LLM continuity via a refreshing language scaffold"
+abstract: >-
+  langquant is a scaffold-as-state research artifact that tests whether a
+  fixed-structure, per-turn-refreshed natural-language scaffold can serve as the
+  sole working state for a stateless LLM, with no conversation history in
+  context. A local A/B experiment (qwen3.5:9b main, qwen3.5:4b extractor, 20
+  turns, n=1 per condition) reports transfer entropy of 0.085 bits for the
+  compressed scaffold (vs 0.608 naked), interpreted as the scaffold
+  approximating a Markov state. The repo's Caveats scope these as preliminary.
+type: software
+authors:
+  - family-names: "Bosch Rodriguez"
+    given-names: Rolando
+    affiliation: Hermes Labs
+    orcid: "https://orcid.org/0009-0005-4896-1112"
+license: Apache-2.0
+repository-code: "https://github.com/hermes-labs-ai/langquant"
+keywords:
+  - AI reliability
+  - LLM reliability
+  - scaffold-as-state
+  - zero-LLM
+  - agent-memory
+  - information-theory
+  - context-compression
+version: "0.1.0"
