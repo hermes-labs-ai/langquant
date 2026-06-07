@@ -40,7 +40,7 @@ That's not a solution. That's a bigger bucket for the same leak.
 
 The model is stateless. It has no memory. It has no continuity.
 
-**The text is the state.**
+**The hypothesis: the text can serve as the state.**
 
 Instead of feeding the model a growing conversation, feed it a **fixed-budget structured scaffold** that encodes the cognitive state of the session — goals, decisions, facts, constraints, vocabulary, open questions — and refreshes every turn.
 
