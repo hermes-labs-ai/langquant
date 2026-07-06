@@ -1,5 +1,7 @@
 # Changelog
 
+> **Note (2026-07-06):** the "Transfer entropy ≈ 0.085 bits (compressed scaffold is Markov — complete state)" line in the v0.0.8 entry below is kept as the original, dated release note. It was a single A/B run (n=1 per condition); the current hedged framing lives in `README.md`'s Caveats section, `llms.txt`, and `AGENTS.md` — treat "Markov — complete state" as the initial hypothesis, not a proven result.
+
 ## v0.0.8 (2026-03-28)
 
 ### Added

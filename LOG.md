@@ -520,14 +520,16 @@ Full analysis script: `analyze_results.py`. Uses Kruskal-Wallis, Mann-Whitney U,
 - Naked: +10.2 tokens/turn but R²=0.133 (noisy due to the hatchet trim at turn 18).
 
 **TRANSFER ENTROPY — the key finding:**
-- **Naked TE = 0.608 bits** — previous scaffold carries significant information about current response beyond what the current scaffold provides. The system is non-Markov: you need history to predict behavior.
-- **Compressed TE = 0.085 bits** — nearly Markov. Each scaffold is self-contained. Previous scaffold adds almost nothing.
+- **Naked TE of 0.608 bits** — previous scaffold carries significant information about current response beyond what the current scaffold provides. The system is non-Markov: you need history to predict behavior.
+- **Compressed TE of 0.085 bits** — nearly Markov. Each scaffold is self-contained. Previous scaffold adds almost nothing.
 
 **What this means:** The compressed scaffold is a **better state representation**. It captures enough that the model's behavior at turn T is predicted by scaffold(T) alone, without needing scaffold(T-1). The naked scaffold leaks — the model at turn T depends on scaffold(T) AND scaffold(T-1), meaning the current scaffold is an incomplete state representation.
 
 This is the first information-theoretically grounded evidence that contrastive framing produces better *state completeness* in the scaffold, not just different classification of the same information.
 
-**This directly validates the LPCI thesis for the compressed condition:** if the scaffold is Markov (TE ≈ 0), then each turn truly only needs [scaffold + current message]. The scaffold IS the complete state. For naked, you'd need the scaffold AND some history — which defeats the point.
+**This directly validates the LPCI thesis for the compressed condition:** if the scaffold is near-Markov (transfer entropy close to zero), then each turn truly only needs [scaffold + current message]. The scaffold IS the complete state. For naked, you'd need the scaffold AND some history — which defeats the point.
+
+> **Historical note (added 2026-07-06):** this section records the day-one (n=1 per condition) reading of the numbers, kept verbatim as project history. The current, hedged framing — including why a near-zero transfer-entropy reading on a single run overstates a "proven Markov" claim — lives in `README.md`'s Caveats section and in `llms.txt`/`AGENTS.md`. Treat the "key finding" / "directly validates" language above as the working hypothesis at the time it was written, not a settled result.
 
 ---
 
