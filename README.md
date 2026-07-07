@@ -242,3 +242,7 @@ Apache 2.0
 *Hermes Labs, 2026*
 
 *"Take a bunch of empty words and make them mean something."*
+
+## About Hermes Labs
+
+Hermes Labs is building the reliability stack for the agent era — Epistemic Engineering: applied epistemology and hermeneutics for AI systems. The technical thesis: the model is the substrate, language is the operations layer; reliability is a question of linguistic infrastructure, not model tuning. langquant is the language-as-state proof corpus in that stack. Founded by Rolando (Roli) Bosch.
