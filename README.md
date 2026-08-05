@@ -1,244 +1,331 @@
 <p align="center">
   <a href="https://github.com/hermes-labs-ai/langquant"><img src="https://img.shields.io/github/stars/hermes-labs-ai/langquant" alt="GitHub stars"></a>
+  <a href="https://pypi.org/project/langquant/"><img src="https://img.shields.io/pypi/v/langquant?color=blue" alt="PyPI"></a>
   <a href="https://github.com/hermes-labs-ai/langquant/blob/main/LICENSE"><img src="https://img.shields.io/github/license/hermes-labs-ai/langquant" alt="License"></a>
-  <a href="https://github.com/hermes-labs-ai/langquant"><img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"></a>
   <a href="https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml"><img src="https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 </p>
 
-# LangQuant
+# langquant
 
-## LPCI: Statefulness Through Language for Stateless Models
+> Run a multi-turn conversation against a local language model that never sees any prior messages. Each turn it reads a small, typed, refreshing scaffold of the session state plus the current user message. The rendered scaffold text is the state.
 
-langquant is a scaffold-as-state research artifact that tests whether a refreshing language scaffold can serve as the sole working state for a stateless LLM.
+`langquant` is a research prototype from [Hermes Labs](https://hermes-labs.ai). It shows that a stateless local model can hold a 20-turn conversation while receiving zero conversation history, by relying on a 12-field structured scaffold that a smaller model rewrites after every turn. The repo ships the runnable system, the experiments, and the JSONL result files.
 
-**Single A/B run, 2026-03-28 — Hermes Labs**
+## What problem this solves
 
-In one A/B run (n=1 per condition), a stateless LLM held conversational coherence across 20 turns with **zero conversation history**. The model never saw any prior messages — a structured language scaffold, refreshed every turn, was the sole state representation.
-
-Transfer entropy analysis is consistent with the scaffold approximating a Markov state: conditioning on the current scaffold left little measurable information flow from prior turns (TE dropped from 0.608 naked to 0.085 compressed — a substantial reduction, not zero). This is a single observation, not a proof; see Caveats.
-
-> `input is output is input is output`
-
----
-
-## The Problem
-
-Every LLM conversation works the same way:
+Standard LLM chat sends the model a growing transcript:
 
 ```
 Turn 1:  [system prompt] + [message 1]
 Turn 2:  [system prompt] + [message 1] + [response 1] + [message 2]
-Turn 10: [system prompt] + [all 9 prior exchanges] + [message 10]
-Turn N:  [system prompt] + [entire history] + [message N]  ← grows without bound
+Turn N:  [system prompt] + [entire history so far] + [message N]   (grows without bound)
 ```
 
-Context grows linearly. Eventually the model chokes, truncates, or loses coherence. Every provider's solution: make the context window bigger. 128k. 200k. 1M tokens.
+Context grows linearly with turn count. Two problems follow.
 
-That's not a solution. That's a bigger bucket for the same leak.
+1. **Lost in the middle.** Long contexts degrade recall and attention placement, even when the relevant span fits in the window ([Liu et al. 2023](https://arxiv.org/abs/2307.03172)).
+2. **Context rot.** Empirically, accuracy on long contexts decays well before the nominal token limit, across frontier models ([Chroma, 2025](https://research.trychroma.com/context-rot)).
 
-## The Thesis
+The default fix is a bigger context window (128k, 200k, 1M). That moves the ceiling without changing the shape of the problem. Effective practice has shifted toward **context engineering**: deciding what to put in the window at each step rather than letting the transcript accumulate ([Karpathy, 2025](https://x.com/karpathy/status/1937902205765607626); [Anthropic, 2025](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)). The model is also stateless across calls anyway ([Atlan, 2026](https://atlan.com/know/are-llms-stateless/)); the transcript is being re-fed to a fresh process each turn.
 
-The model is stateless. It has no memory. It has no continuity.
-
-**The hypothesis: the text can serve as the state.**
-
-Instead of feeding the model a growing conversation, feed it a **fixed-budget structured scaffold** that encodes the cognitive state of the session — goals, decisions, facts, constraints, vocabulary, open questions — and refreshes every turn.
+`langquant` is a narrow instance of context engineering: send the model no history at all, and put the entire non-message context into a fixed-shape, typed scaffold that a smaller model rewrites after every turn.
 
 ```
 Every turn:  [scaffold: K tokens, refreshed] + [current message]
 ```
 
-The scaffold doesn't grow. It **compresses**. Turn 20 and turn 2,000 look identical from the model's perspective.
+The scaffold does not accumulate a transcript. It is re-derived from the prior scaffold and the latest exchange. Turn 2 and turn 20 are structurally identical from the model's point of view.
 
-## What We Observed
+## What this repo demonstrates
 
-### Setup
+In a rigorous run across 3 unrelated topics (cooking, renovation, startup), 5 conditions, and 5 replications per cell (74 sessions, 1,480 turns), a stateless `qwen3.5:9b` reading only the 12-field scaffold and the current user message held a mean probe recall of **0.83** at 20 turns, against **0.00** for the no-scaffold control. Data: [`results/lpci_rigorous_summary.jsonl`](results/lpci_rigorous_summary.jsonl).
 
-- **Main model**: qwen3.5:9b (Ollama, local)
-- **State extractor**: qwen3.5:4b (extracts state changes as JSON deltas after each turn)
-- **A/B test**: 20-turn conversation, two conditions:
-  - **Naked**: zero framing, pure state extraction
-  - **Compressed**: contrastive IS/NOT markers guiding extraction
-- **Probes** at turns 4, 8, 12, 16, 20: recall tests, contradiction injection, false claim detection
+Per-condition mean recall at turn 20:
 
-### Results
-
-The model had amnesia every turn — it only saw the scaffold + current message. Despite this:
-
-| Probe | Turn | What happened |
-|---|---|---|
-| Early recall | 4 | Model correctly recalled all prior decisions (1.0 recall) |
-| Contradiction | 8 | Model rejected "switch to GPT-4" — scaffold said "state extractor is qwen3.5:4b" |
-| Deep recall | 12 | Model listed decisions from turns 1–11 accurately (0.93 recall, compressed) |
-| Topic pivot | 16 | Model recalled turn 1's topic and connected it to turn 15's discussion |
-| Final exam | 20 | Model listed all decisions in order, caught a false claim |
-
-### Compression
-
-The scaffold grew slower than the conversation it represented:
-
-| Turn | Scaffold (tokens) | Conversation (tokens) | Compression |
+| Condition | n | Mean recall | What it is |
 |---|---|---|---|
-| 1 | 343 | 114 | 0.3x (scaffold larger) |
-| 5 | 444 | 456 | 1.0x (break-even) |
-| 10 | 613 | 873 | 1.4x |
-| 15 | 662 | 1,363 | 2.1x |
-| 20 | 789 | 1,945 | **2.5x** |
+| `naked` | 15 | 0.846 | Empty constraint/style; full 12-field scaffold |
+| `compressed` | 14 | 0.831 | Contrastive IS/NOT markers in constraints/style |
+| `naive` | 15 | 0.792 | Last-N message summary (baseline; not LPCI) |
+| `clamped` | 15 | 0.759 | Hard fixed token budget on scaffold |
+| `raw` | 15 | 0.000 | No scaffold, no history (falsifiability anchor) |
 
-Scaffold grows at ~23 tokens/turn. Conversation grows at ~97 tokens/turn. The compression ratio improves continuously. At turn 100 the scaffold represents ~10,000 tokens of conversation. At turn 1,000, the gap is enormous.
+The `raw` condition is the floor: a stateless model with no scaffold and no history cannot answer probes about prior turns. The four scaffolded conditions all hold recall in the 0.76 to 0.85 band. The naive last-N summary baseline (0.79) is competitive with the LPCI scaffolds on this metric; we address this directly below.
 
-### Information-Theoretic Verification
-
-Using Shannon entropy, mutual information, KL divergence, and transfer entropy (via pyitlib + scipy):
-
-| Metric | Naked | Compressed | Reading |
-|---|---|---|---|
-| Transfer entropy | 0.608 bits | **0.085 bits** | Compressed scaffold left little measurable flow from prior turns |
-| Scaffold entropy | 7.30 | 7.78 | Compressed carries more information per token |
-| KL divergence (t1→t20) | — | 0.20 → 0.48 | Conditions diverge over time |
-| Scaffold-response MI | 0.49 bits | 0.24 bits | Different information coupling |
-
-**The transfer entropy drop is the central finding.** Conditioning on the current compressed scaffold cut transfer entropy from 0.608 to 0.085 bits — a substantial reduction (not zero), consistent with the scaffold carrying most of the per-turn state in this run. This is the direction the LPCI hypothesis predicts; with n=1 per condition over 20 turns it is suggestive, not a proof. See Caveats.
-
-## Architecture
+## Mechanism
 
 ```
-┌─────────────┐
-│ User message │
-└──────┬──────┘
-       ↓
-┌──────────────────────────────────────────────┐
-│  [Scaffold: K tokens]  +  [Current message]  │  ← Only thing the model sees
-└──────────────────────┬───────────────────────┘
-                       ↓
-              ┌─────────────────┐
-              │   Main model    │  (qwen3.5:9b)
-              │   (stateless)   │
-              └────────┬────────┘
-                       ↓
-              ┌─────────────────┐
-              │    Response     │
-              └────────┬────────┘
-                       ↓
-┌──────────────────────────────────────────────┐
-│  State extractor (qwen3.5:4b)               │
-│  Input: scaffold + user msg + response       │
-│  Output: JSON delta (add/remove decisions,   │
-│          facts, constraints, vocabulary...)   │
-└──────────────────────┬───────────────────────┘
-                       ↓
-              ┌─────────────────┐
-              │  Apply delta    │
-              │  to scaffold    │
-              └────────┬────────┘
-                       ↓
-              ┌─────────────────┐
-              │ Refreshed       │  ← Same structure, updated content
-              │ scaffold        │     Ready for next turn
-              └─────────────────┘
+   User message
+        |
+        v
+[scaffold: K tokens] + [current message]      <- the only thing the main model sees
+        |
+        v
+   Main model (qwen3.5:9b, stateless)
+        |
+        v
+   Response
+        |
+        v
+   State extractor (qwen3.5:4b)  reads [scaffold + user message + response]
+        |
+        v
+   JSON delta -> apply to typed SessionState -> re-render scaffold for next turn
 ```
 
-The model is a pure function. The scaffold is the program. The output of one pass feeds the compression of the next.
+The main model is a pure function. The scaffold is the program. The output of one pass feeds the construction of the next.
 
-## Scaffold Schema
+### Scaffold schema
 
-The scaffold is a structured state object with typed fields:
+`SessionState` is a typed dataclass with one section per field:
 
+| Field | Meaning |
+|---|---|
+| `role` | who the model is in this session |
+| `style` | communication constraints |
+| `goal` / `subgoals` | current objective and active sub-tasks |
+| `decisions` | things decided (treated as irreversible) |
+| `facts` | established truths for the session |
+| `artifacts` | things produced (files, code, results) |
+| `constraints` | hard boundaries, rendered as NOTs |
+| `open_threads` | unresolved questions |
+| `uncertainties` | things flagged as unsure |
+| `vocabulary` | domain terms (term to meaning) |
+| `turn` | counter |
+
+## The combination has a name: LPCI
+
+The specific combination shown above (no conversation history sent + a 12-field typed scaffold + a smaller model rewriting the scaffold each turn) is what we call **LPCI**.
+
+> **LPCI (Linguistically Persistent Cognitive Interface)** is a way to give a stateless language model continuity without feeding it conversation history. Each turn, the model sees only a fixed-budget, typed scaffold of the session state (role, style, goals, decisions, facts, constraints, vocabulary, open questions) plus the current message. A smaller model rewrites the scaffold after every turn. The conversation history never reaches the model: the rendered scaffold text is the state. LPCI was formulated by Rolando Bosch at Hermes Labs in 2025.
+
+LPCI is a flag on the *combination*, not on context engineering, summarization-based memory, or externalized state. Each of those is well-established prior art. What is distinctive is sending the model **no transcript at all** plus a **typed, inspectable scaffold** with stable field semantics.
+
+## How LPCI relates to other work
+
+This is a crowded space. The table below is a structural comparison, not a benchmark.
+
+| System | History sent to model | Schema | Persistent store | Fine-tune required | Retrieval required |
+|---|---|---|---|---|---|
+| Naive transcript | full transcript | none | no | no | no |
+| Naive last-N summary | summary + last N | freeform text | no | no | no |
+| Context engineering ([Karpathy 2025](https://x.com/karpathy/status/1937902205765607626); [Anthropic 2025](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)) | curated subset | unconstrained | optional | no | optional |
+| MemGPT / Letta ([Packer 2023](https://arxiv.org/abs/2310.08560)) | recent buffer + retrieved memories | tiered (working / archival) | yes | no | yes |
+| Gist tokens ([Mu 2023](https://arxiv.org/abs/2304.08467)) | gist embedding | learned latent | no | yes (model fine-tune) | no |
+| AutoCompressors ([Chevalier 2023](https://arxiv.org/abs/2305.14788)) | summary vectors | learned latent | no | yes (model fine-tune) | no |
+| Memori ([2026](https://arxiv.org/abs/2603.19935)) | retrieved memories | structured records | yes | no | yes |
+| **LPCI (this repo)** | **none** | **typed 12-field scaffold** | **no** | **no** | **no** |
+
+Honest overlaps:
+
+- Like MemGPT, LPCI separates working state from a transcript, and refreshes that state with a model.
+- Like context engineering broadly, LPCI decides what goes in the window each turn; LPCI is one narrow choice inside that practice (zero history, typed schema, smaller model rewrites).
+- Unlike gist tokens or AutoCompressors, LPCI requires no model fine-tuning and operates at the language level (inspectable text), not in learned latent space.
+- Unlike retrieval-augmented memory, LPCI does not maintain a persistent store or run a retriever; the state is the current scaffold.
+
+## Install
+
+```bash
+pip install langquant
 ```
-SessionState:
-  role         — who the model is
-  style        — communication constraints
-  goal         — current objective
-  subgoals     — active sub-tasks
-  decisions    — things decided (irreversible)
-  facts        — established truths
-  artifacts    — things produced
-  constraints  — hard boundaries (NOTs)
-  open_threads — unresolved questions
-  uncertainties — things we're unsure about
-  vocabulary   — domain terms (term → meaning)
-  turn         — counter
+
+`langquant` runs against a local [Ollama](https://ollama.com) instance. Pull the two models used by default:
+
+```bash
+ollama pull qwen3.5:9b   # main reasoning model
+ollama pull qwen3.5:4b   # state-extractor model
 ```
 
-Each field maps to a section in the scaffold text. The state extractor outputs JSON deltas (`add_decisions`, `remove_open_threads`, `add_vocabulary`, etc.) that are applied to the state object, which is then re-rendered as the scaffold for the next turn.
+## Usage
 
-## Caveats (Honest)
+Interactive session from the command line:
 
-1. **The scaffold was growing** (343 → 789 tokens), not truly fixed budget. The budget ceiling only triggered once. A hard-clamped experiment (exactly K tokens every turn) is needed to prove true fixed-budget compression.
-2. **n=1 per condition.** Needs replications.
-3. **20 turns, not 1,000.** Needs scale testing.
-4. **The state extractor corrupts.** It generates paraphrased strings, not verbatim text. Classification drift was observed: same conversation produced 71 facts / 4 decisions (naked) vs 3 facts / 23 decisions (compressed). The extractor needs an index-based selection mechanism (output integer pointers, not generated text) to guarantee fidelity.
-5. **Scaffold framing affects extraction, not just model behavior.** The contrastive markers helped the state extractor classify information, not necessarily the main model's coherence. Both conditions maintained continuity — the difference was in what the scaffold *contained*.
+```bash
+python lpci.py
+```
 
-## Additional Experiment: Scaffold Amplification (619 trials)
+Commands inside the session: `/state` (show the scaffold the model sees), `/history` (show the user-facing transcript), `/save <path>`, `/quit`.
 
-Separate from LPCI, we ran a single-shot experiment testing 5 scaffold conditions across 4 model sizes (qwen3.5: 0.8b, 2b, 4b, 9b) on 12 tasks:
+As a library:
 
-- Scaffold condition significantly affects score (Kruskal-Wallis p=0.0007)
-- But only for **small models** (0.8b: p=0.0008, 2b: p=0.005, 4b: p=0.92, 9b: p=0.94)
-- Condition explains **4.2%** of score variation; model size explains **4.7%**
-- Dense scaffolds (QuickThink compressed grammar) **break** small models: 0.8b drops from 0.78 → 0.40. Models need enough capacity to "decompress" the scaffold.
+```python
+from lpci import LPCISession
 
-## Repo Contents
+session = LPCISession(
+    main_model="qwen3.5:9b",
+    state_model="qwen3.5:4b",
+    token_budget=7000,
+)
+session.configure(
+    role="senior backend engineer",
+    style="direct, concise, technical",
+    goal="design a rate limiter for the payments API",
+)
+
+# Model sees ONLY the rendered scaffold + this message. No transcript.
+reply = session.chat("We decided to use a token bucket. Constraint: no Redis.")
+print(reply)
+
+# Inspect what the model actually saw this turn:
+print(session.show_state())
+
+# Persist / restore the entire session state as JSON:
+session.save_state("state.json")
+session.load_state("state.json")
+```
+
+After each `chat()` call, the state-extractor model emits a JSON delta (new decisions, facts, constraints, vocabulary, resolved threads) that updates the `SessionState`, which re-renders to the scaffold for the next turn.
+
+## Reproducibility
+
+```bash
+python lpci_test.py        # 20-turn A/B continuity test -> results/lpci_ab_test.jsonl
+python analyze_results.py  # information-theoretic analysis (MI, KL, transfer entropy)
+python lpci_rigorous.py    # 3 topics x 5 conditions x 5 replications -> results/lpci_rigorous_summary.jsonl
+python postprocess_te.py   # batch transfer-entropy computation over the rigorous run
+```
+
+Result files committed to the repo:
 
 | File | Description |
 |---|---|
-| `lpci.py` | Core prototype: SessionState, LPCISession, state extraction, scaffold refresh, interactive CLI |
-| `lpci_test.py` | A/B continuity test: 20 turns × 2 conditions, probes, scaffold evaluation, delta tracing |
-| `analyze_results.py` | Information-theoretic analysis: MI, KL divergence, transfer entropy, significance tests |
-| `run_experiment.py` | Single-shot scaffold amplification harness (matrix run) |
-| `results/lpci_ab_test.jsonl` | LPCI A/B run data: 40 rows, full scaffold snapshots, delta traces, probe evaluations |
-| `results/full_run_v1.jsonl` | 619-trial matrix run: 4 models × 5 conditions × 12 tasks × 3 runs |
-| `LOG.md` | Complete project log |
-| `TODO.md` | Future work |
+| `results/lpci_ab_test.jsonl` | 20-turn A/B: full scaffold snapshots, delta traces, probe evaluations |
+| `results/lpci_rigorous_summary.jsonl` | 74-session rigorous-run summaries (the lead claim) |
+| `results/full_run_v1.jsonl` | 619-trial scaffold-amplification matrix (companion experiment) |
 
-## What's Next
+## Demonstrated findings
 
-- **Hard-clamped budget test**: exactly K tokens every turn, real compression every turn
-- **Scale test**: 100+ turns, then 1,000+
-- **Per-token ablation**: which scaffold tokens carry the signal (semantic curvature measurement)
-- **Minimum viable scaffold**: progressive compression curve — at what token count does behavior degrade?
-- **Cross-model scaffold transfer**: does a scaffold built by one model work when injected into another?
-- **Index-based extraction**: eliminate content generation from the extraction pipeline
+1. **Zero history sent to the model.** Structural property of the code; verifiable by inspecting `LPCISession.chat()` in `lpci.py`.
+2. **Recall holds across 20 turns.** Mean recall 0.83 (compressed, n=14) vs 0.00 (no-scaffold control, n=15) — see the per-condition table above. 74 is the total session count across all 5 conditions and 3 topics in the full study, not the paired n for this specific contrast.
+3. **Recall parity with a naive last-N summary baseline.** Naive summary scored 0.79, within the same band as the LPCI conditions. The contribution here is the **structural property** (zero history, typed inspectable state, auditable field semantics), not a recall ceiling above naive summarization.
+4. **Compression curve in the 20-turn A/B.** Scaffold grew at ~23 tokens/turn against conversation at ~97 tokens/turn; at turn 20, scaffold was 789 tokens against 1,945 tokens of equivalent conversation. Note: the `compressed` condition was *not* held to a hard fixed budget. See caveats.
 
-## LPCI
+## What this does NOT claim
 
-Formulated ~summer 2025 as **Linguistically Persistent Cognitive Interface**:
+These are the things we explicitly are not claiming, so they cannot be mis-cited.
 
-- **Linguistically** — the medium is language, not tensors
-- **Persistent** — survives across the stateless inference boundary
-- **Cognitive** — does thinking-work (attention steering, probability reshaping), not just storage
-- **Interface** — sits between sessions and the stateless model
+- **Not** that the scaffold is a complete Markov state for the conversation. The information-theoretic question (does knowing prior scaffolds add information beyond the current one?) is the motivation for the work, not a settled result. See the methodology section below.
+- **Not** that LPCI beats naive last-N summarization on recall. In the rigorous run, Mann-Whitney between `naked` and `compressed` gave p = 1.0 (no separation); the `clamped` LPCI variant scored 0.759 against the naive summary baseline at 0.792, at roughly 1/4 the tokens. Naive summary is competitive on recall. The brand of the contribution is the structural property, not a recall ceiling.
+- **Not** fixed-budget operation in the headline run. The `compressed` scaffold grew from 343 tokens at turn 1 to 789 tokens at turn 20; only the `clamped` condition holds a hard ceiling.
+- **Not** validated beyond 20 turns. The longest tested session is 20 turns.
+- **Not** validated across models. Only `qwen3.5` family was tested (4b extractor, 9b main). Cross-model transfer is open work.
+- **Not** production-ready. This is a research prototype; the state extractor paraphrases rather than copying verbatim, and classification drift was observed across conditions (see methodology).
 
----
+## Methodology and open questions
 
-## About Hermes Labs
+### The TE estimator collapsed; that is not evidence of Markov state
 
-Hermes Labs is an independent AI-reliability lab building open-source tools that catch silent failure modes in production AI. More at [hermes-labs.ai](https://hermes-labs.ai).
+Two transfer-entropy measurements live in this repo:
 
----
+1. **Single A/B run, scalar Shannon estimator** (`analyze_results.py`, n=1 per condition, 20 turns). Reported TE = 0.608 bits for `naked` and **0.085 bits for `compressed`** [LINT:RETRACTED-HISTORICAL] — retracted, non-citable single small-N pilot. Taken alone, that is suggestive but n=1.
 
-If LangQuant is useful to you, please [star the repo](https://github.com/hermes-labs-ai/langquant) — it helps others find it.
+2. **Rigorous run, embedding-cosine binning estimator** (`postprocess_te.py`, 74 sessions). Reported **TE = 0.0 for every condition, including the raw baseline** [LINT:RETRACTED-HISTORICAL] — retracted and withdrawn as non-informative, non-citable. Mann-Whitney `naked` vs `compressed` p = 1.0.
 
-## Citation
+The second number is **estimator failure, not evidence of Markov state**. Inspecting `lpci_rigorous.py:556-561`, the cosine similarity between consecutive scaffolds had near-zero standard deviation, which caused the discretization step to collapse to a single bin. An estimator that returns 0 on the raw zero-context control (which is non-Markov by construction) is not discriminating between conditions. It is degenerate.
 
-If you use this work, please cite:
+We are not claiming the scaffold is a Markov state. The Markov-state framing is the **research target**: the next experiment is to build a discriminating estimator that cleanly separates the no-scaffold baseline from the scaffold conditions. A V-information style estimator may be a cleaner formulation ([ICLR 2025](https://proceedings.iclr.cc/paper_files/paper/2025/file/a9b0e4e205bdf232da9f74bfb9469539-Paper-Conference.pdf)), since it does not require histogram discretization on near-collinear vectors.
 
-```
+### Naive-summary parity is a finding, not a problem
+
+The rigorous run surfaced something brand-aligned with how Hermes Labs publishes: the naive last-N summary baseline (0.792) was within noise of the LPCI conditions (0.831 compressed, 0.846 naked, 0.759 clamped) on recall. We report this directly. The reason this does not retract LPCI is that the contribution claimed here is structural, not recall-relative:
+
+- The model receives **zero conversation history** (auditable in code).
+- The state is a **typed, inspectable 12-field object**, not a freeform paragraph.
+- Field semantics are stable across turns (`decisions` always means "treated as irreversible"; `constraints` always renders as NOT clauses).
+- The compression curve widens with turn count; the recall-band parity with naive summary is established at 20 turns and may not extend.
+
+We treat this null-result as part of the work, in line with our public stance on null-result honesty ([why-your-ai-lies](https://hermes-labs.ai/archive/why-your-ai-lies-when-the-data-is)).
+
+### Classification drift in the state extractor
+
+Across A/B conditions, the same conversation produced 71 facts and 4 decisions under one framing, and 3 facts and 23 decisions under another. The total information captured is similar; the bucket assignment is not. This is the state extractor paraphrasing and reclassifying. The likely fix is an **index-based extractor** that emits integer pointers into verbatim turn segments rather than generated text; this is the same fidelity pattern Hermes Labs uses in [cogito-ergo](https://github.com/roli-lpci/cogito-ergo).
+
+### Open questions
+
+- Hard-clamped budget at scale: exactly K tokens at every turn through 100+ turns.
+- A discriminating TE (or V-information) estimator that separates `raw` from `compressed`.
+- Cross-model scaffold transfer: does a scaffold built by one model work injected into another?
+- Cross-language scaffolds: only English tested.
+
+## Companion experiment: scaffold amplification (619 trials)
+
+Separate from LPCI, `run_experiment.py` ran a single-shot study of 5 scaffold conditions across 4 model sizes (`qwen3.5` 0.8b/2b/4b/9b) on 12 tasks (`results/full_run_v1.jsonl`):
+
+- Scaffold condition significantly affects score (Kruskal-Wallis p = 0.0007), but **only for small models** (0.8b p = 0.0008, 2b p = 0.005, 4b p = 0.92, 9b p = 0.94).
+- Condition explained 4.2% of score variation; model size explained 4.7%.
+- Dense compressed-grammar scaffolds *break* small models (0.8b dropped 0.78 to 0.40), consistent with a "model needs capacity to decompress a dense scaffold" threshold.
+
+This is a separate measurement from LPCI continuity and is reported separately in the result file.
+
+## FAQ
+
+**What does LPCI stand for?**
+Linguistically Persistent Cognitive Interface. Linguistically: the medium is language, not tensors. Persistent: it survives across the stateless inference boundary. Cognitive: it steers attention and reshapes behavior, not just stores text. Interface: it sits between the session and the stateless model.
+
+**Does the model really see no conversation history?**
+Yes. Each turn the main model receives a system message containing the rendered scaffold and a user message containing the current input, and nothing else. The transcript is kept only for the human-facing UI (`show_history()`), never sent to the model. Auditable in `lpci.py`.
+
+**Is TE = 0 proven?** [LINT:RETRACTED-HISTORICAL] — withdrawn, non-citable claim.
+No. Two estimators were run. The n=1 scalar estimator gave 0.085 bits for the compressed condition [LINT:RETRACTED-HISTORICAL] — retracted, non-citable single small-N pilot. The rigorous embedding-cosine estimator collapsed to TE = 0 for every condition including the raw no-context baseline [LINT:RETRACTED-HISTORICAL] — retracted, non-citable, degenerate and non-discriminating, which is non-Markov by construction; that result is degenerate, not informative. The Markov-state framing is a research target, not a result.
+
+**Does LPCI beat naive summarisation?**
+Not on recall, in this run. In the rigorous 74-session experiment, a naive last-N summary baseline scored 0.792, within noise of LPCI conditions (0.831 compressed; 0.759 clamped at ~1/4 the tokens). The contribution claimed here is structural (zero history, typed inspectable state, auditable field semantics), not a recall ceiling above naive summarization.
+
+**Can I use this as a production memory layer?**
+Not as-is. This is a research prototype. The state extractor paraphrases, classification drift was observed, scale beyond 20 turns is untested, and only one model family was tested.
+
+**Who created LPCI?**
+Rolando Bosch at Hermes Labs, formulated in 2025. Hermes Labs is the AI audit infrastructure company that maintains this repo.
+
+## Citations
+
+```bibtex
 @misc{langquant2026,
-  author = {Hermes Labs},
-  title = {LangQuant: Language State Compression and the Linguistically Persistent Cognitive Interface},
-  year = {2026},
-  url = {https://github.com/hermes-labs-ai/langquant}
+  author = {Bosch, Rolando},
+  title  = {langquant: the Linguistically Persistent Cognitive Interface (LPCI) reference implementation},
+  year   = {2026},
+  url    = {https://github.com/hermes-labs-ai/langquant},
+  note   = {Hermes Labs}
 }
 ```
 
+A `CITATION.cff` file is included in the repo root for citation tooling.
+
+External work referenced above:
+
+- Liu, N. F. et al. (2023). *Lost in the Middle: How Language Models Use Long Contexts.* https://arxiv.org/abs/2307.03172
+- Chroma Research (2025). *Context Rot.* https://research.trychroma.com/context-rot
+- Karpathy, A. (2025). On context engineering. https://x.com/karpathy/status/1937902205765607626
+- Anthropic (2025). *Effective context engineering for AI agents.* https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+- Atlan (2026). *Are LLMs Stateless?* https://atlan.com/know/are-llms-stateless/
+- Packer, C. et al. (2023). *MemGPT: Towards LLMs as Operating Systems.* https://arxiv.org/abs/2310.08560
+- Mu, J. et al. (2023). *Learning to Compress Prompts with Gist Tokens.* https://arxiv.org/abs/2304.08467
+- Chevalier, A. et al. (2023). *Adapting Language Models to Compress Contexts (AutoCompressors).* https://arxiv.org/abs/2305.14788
+- Memori / StructMemEval (2026). https://arxiv.org/abs/2603.19935
+- V-information for LLMs (ICLR 2025). https://proceedings.iclr.cc/paper_files/paper/2025/file/a9b0e4e205bdf232da9f74bfb9469539-Paper-Conference.pdf
+
+Hermes Labs methodology lineage:
+
+- *Taxonomy of Epistemic Failure Modes in LLMs.* https://doi.org/10.5281/zenodo.19042469
+- *The Asymmetric Burden of Proof in AI Evaluation.* https://doi.org/10.5281/zenodo.18867694
+- *Why your AI lies when the data is honest.* https://hermes-labs.ai/archive/why-your-ai-lies-when-the-data-is
+
+## About Hermes Labs
+
+[Hermes Labs](https://hermes-labs.ai) is the AI audit infrastructure company behind langquant. We build EU AI Act compliance tooling, ISO 42001 evidence bundles, and agent-level risk testing for teams shipping AI into regulated environments. Everything we release here is Apache-2.0, free, no SaaS tier. The thesis behind this stance is laid out in [tools-are-the-byproduct](https://hermes-labs.ai/archive/tools-are-the-byproduct-why-hermes): we sell audit work; the tools we open-source are the ones we already use internally. The longer-horizon framing is in [ambient-assurance](https://hermes-labs.ai/archive/ambient-assurance).
+
+- Site: https://hermes-labs.ai
+- Contact: roli@hermes-labs.ai
+- Writing: https://rolibosch.substack.com
+- Video: https://youtube.com/@rolifromhermes
+- Full OSS stack: https://github.com/hermes-labs-ai
+
+If `langquant` is useful to you, [star the repo](https://github.com/hermes-labs-ai/langquant) so other people can find it.
+
 ## License
 
-Apache 2.0
+Apache 2.0.
 
 ---
 
-*Hermes Labs, 2026*
-
-*"Take a bunch of empty words and make them mean something."*
+*Hermes Labs, 2026.*
