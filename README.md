@@ -238,7 +238,7 @@ We treat this null-result as part of the work, in line with our public stance on
 
 ### Classification drift in the state extractor
 
-Across A/B conditions, the same conversation produced 71 facts and 4 decisions under one framing, and 3 facts and 23 decisions under another. The total information captured is similar; the bucket assignment is not. This is the state extractor paraphrasing and reclassifying. The likely fix is an **index-based extractor** that emits integer pointers into verbatim turn segments rather than generated text; this is the same fidelity pattern Hermes Labs uses in [cogito-ergo](https://github.com/roli-lpci/cogito-ergo).
+Across A/B conditions, the same conversation produced 71 facts and 4 decisions under one framing, and 3 facts and 23 decisions under another. The total information captured is similar; the bucket assignment is not. This is the state extractor paraphrasing and reclassifying. The likely fix is an **index-based extractor** that emits integer pointers into verbatim turn segments rather than generated text; this is the same fidelity pattern Hermes Labs uses in [fidelis](https://github.com/hermes-labs-ai/fidelis).
 
 ### Open questions
 
@@ -312,7 +312,7 @@ Hermes Labs methodology lineage:
 
 ## About Hermes Labs
 
-[Hermes Labs](https://hermes-labs.ai) is the AI audit infrastructure company behind langquant. We build EU AI Act compliance tooling, ISO 42001 evidence bundles, and agent-level risk testing for teams shipping AI into regulated environments. Everything we release here is Apache-2.0, free, no SaaS tier. The thesis behind this stance is laid out in [tools-are-the-byproduct](https://hermes-labs.ai/archive/tools-are-the-byproduct-why-hermes): we sell audit work; the tools we open-source are the ones we already use internally. The longer-horizon framing is in [ambient-assurance](https://hermes-labs.ai/archive/ambient-assurance).
+[Hermes Labs](https://hermes-labs.ai) is an AI reliability engineering studio for product and engineering teams shipping production agents and LLM applications. We find the structural AI failures standard evals miss, then harden retrieval, memory, agents, and the language layers around production AI systems with runtime controls and defensible evidence. Everything released here is Apache-2.0, free, no SaaS tier. The longer-horizon framing is in [ambient-assurance](https://hermes-labs.ai/archive/ambient-assurance).
 
 - Site: https://hermes-labs.ai
 - Contact: roli@hermes-labs.ai
