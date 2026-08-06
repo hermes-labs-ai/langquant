@@ -275,7 +275,7 @@ Not on recall, in this run. In the rigorous 74-session experiment, a naive last-
 Not as-is. This is a research prototype. The state extractor paraphrases, classification drift was observed, scale beyond 20 turns is untested, and only one model family was tested.
 
 **Who created LPCI?**
-Rolando Bosch at Hermes Labs, formulated in 2025. Hermes Labs is the AI audit infrastructure company that maintains this repo.
+Rolando Bosch at Hermes Labs, formulated in 2025. Hermes Labs is the AI reliability engineering studio that maintains this repo.
 
 ## Citations
 
