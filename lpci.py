@@ -263,7 +263,7 @@ class LPCISession:
         # UI-only history (not sent to model)
         self.history: list[dict] = []
 
-    def configure(self, role: str = "", style: str = "", goal: str = "", constraints: list[str] = None):
+    def configure(self, role: str = "", style: str = "", goal: str = "", constraints: list[str] | None = None):
         """Set initial session parameters."""
         if role:
             self.state.role = role

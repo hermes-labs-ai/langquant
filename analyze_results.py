@@ -278,7 +278,7 @@ def analyze_lpci():
 
         # Linear regression: turn → token count (is it truly growing?)
         turns = np.arange(1, 21)
-        slope_t, intercept_t, r_t, p_t, se_t = stats.linregress(turns, tokens)
+        slope_t, _intercept_t, r_t, p_t, _se_t = stats.linregress(turns, tokens)
         slope_d, _, r_d, p_d, _ = stats.linregress(turns, decisions)
         slope_f, _, r_f, p_f, _ = stats.linregress(turns, facts)
 
