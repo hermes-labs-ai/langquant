@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Post-process rigorous run: batch-embed scaffold+response, compute TE per session.
+"""Historical rigorous-run TE post-processing; invalid for claim use.
 
 Run this AFTER lpci_rigorous.py finishes. It reads results/lpci_rigorous.jsonl,
 embeds all scaffold_text and response fields, computes transfer entropy per session,
 and updates results/lpci_rigorous_summary.jsonl with real TE values.
+
+The current rigorous rows do not persist the scaffold field consumed by the
+estimator, and the downstream helper falls back to response text. This makes
+the historical output non-discriminating. See docs/EXPERIMENTS.md.
 """
 
 import json

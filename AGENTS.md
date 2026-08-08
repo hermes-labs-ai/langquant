@@ -2,7 +2,7 @@
 
 ## What this project is
 
-LangQuant is a research prototype exploring the LPCI (Linguistically Persistent Cognitive Interface) hypothesis: that a stateless LLM can maintain conversational coherence using only a refreshing structured language scaffold, no conversation history. In a single A/B run (n=1 per condition, 20 turns), the model held coherence under this setup and transfer entropy from history to the next turn dropped substantially once conditioned on the scaffold (0.608 naked vs 0.085 compressed) — a large reduction, not zero.
+LangQuant is a research prototype exploring the LPCI (Linguistically Persistent Cognitive Interface) hypothesis: that a stateless LLM can maintain conversational continuity using only a refreshing structured language scaffold, with no conversation history in the main-model request. The no-transcript request boundary is directly inspectable in code. Current behavioral and information-flow artifacts are exploratory; do not present them as a validated recall lift or Markov-state result.
 
 ## Architecture
 
@@ -12,7 +12,7 @@ langquant/
 ├── lpci_test.py         # A/B continuity test (20 turns × 2 conditions)
 ├── analyze_results.py   # Information-theoretic analysis (MI, KL, transfer entropy)
 ├── run_experiment.py    # Scaffold amplification matrix harness
-├── results/             # JSONL data files (proof + matrix run)
+├── results/             # JSONL experiment artifacts (continuity + matrix run)
 ├── tasks/               # Task definitions for matrix run
 ├── LOG.md               # Development log
 └── TODO.md              # Future work
@@ -23,7 +23,7 @@ langquant/
 1. **SessionState**: Typed dataclass with 12 fields (role, style, goal, subgoals, decisions, facts, artifacts, constraints, open_threads, uncertainties, vocabulary, turn). This is the scaffold.
 2. **State extractor**: Smaller model (qwen3.5:4b) that reads scaffold + message + response and outputs JSON deltas (add/remove operations per field).
 3. **Scaffold refresh**: Apply deltas to SessionState, re-render as text, inject as sole context for next turn.
-4. **Transfer entropy drop**: For the compressed scaffold, conditioning on the current scaffold left little measurable information flow from prior turns (TE 0.608 naked vs 0.085 compressed) — consistent with the scaffold approximating a Markov state, though this is a single A/B observation, not a proof.
+4. **Evidence boundary**: Transfer-entropy outputs in historical artifacts are invalid for claim use. The rigorous estimator falls back from a missing scaffold field to the response itself and is non-discriminating. See `docs/EXPERIMENTS.md` before describing results.
 
 ## Running experiments
 

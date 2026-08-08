@@ -2,18 +2,20 @@
 
 > Language State Compression and the Linguistically Persistent Cognitive Interface (LPCI).
 
-langquant is a scaffold-as-state research artifact testing whether a refreshing language scaffold can serve as the sole working state for a stateless LLM. In a single A/B run (n=1 per condition), a stateless LLM held conversational coherence across 20 turns with zero conversation history — a structured language scaffold, refreshed every turn, was the sole state representation. Transfer entropy analysis is consistent with the scaffold approximating a Markov state (TE dropped from 0.608 naked to 0.085 compressed — a substantial reduction, not zero).
+langquant is a scaffold-as-state research artifact testing whether a refreshing language scaffold can serve as the sole working state for a stateless LLM. The implementation sends the main model only a typed scaffold and the current user message; the UI transcript is stored separately and is not included in that request. A smaller local model refreshes the inspectable state after each turn.
 
-Key results (single A/B run):
-- 2.5x compression at turn 20 (789 tokens scaffold vs 1,945 tokens conversation)
-- Scaffold grows at ~23 tokens/turn vs ~97 tokens/turn for conversation history
-- Transfer entropy dropped from 0.608 (naked) to 0.085 (compressed), consistent with the scaffold carrying most per-turn state
-- Run with qwen3.5:9b (main) + qwen3.5:4b (state extractor)
+Current evidence boundary:
+- Directly verified: no-transcript main-model payload; typed, refreshed, inspectable state
+- Exploratory only: 74 completed 20-turn continuity sessions and a 40-row A/B trace
+- The reported continuity scores do not use one shared ground-truth evaluator across conditions
+- Historical transfer-entropy outputs are invalid for claim use; see docs/EXPERIMENTS.md
+- Continuity runs used qwen3.5:9b (main) + qwen3.5:4b (state extractor)
 
 Stack: Python 3.11+, Ollama (local), pyitlib + scipy for information-theoretic analysis.
 
 ## Docs
-- [README](README.md): Full results, architecture, caveats, scaffold schema
+- [README](README.md): Architecture, quick start, current evidence boundary
+- [Experiment record](docs/EXPERIMENTS.md): Methods, result provenance, scorer and estimator limitations
 - [LOG](LOG.md): Complete development log with experiment details
 - [TODO](TODO.md): Future work and practical applications roadmap
 
@@ -24,8 +26,9 @@ Stack: Python 3.11+, Ollama (local), pyitlib + scipy for information-theoretic a
 - [run_experiment.py](run_experiment.py): Single-shot scaffold amplification harness (4 models × 5 conditions × 12 tasks × 3 runs)
 
 ## Data
-- [results/lpci_ab_test.jsonl](results/lpci_ab_test.jsonl): LPCI proof data (40 rows)
-- [results/full_run_v1.jsonl](results/full_run_v1.jsonl): 619-trial matrix run
+- [results/lpci_ab_test.jsonl](results/lpci_ab_test.jsonl): Exploratory A/B trace (40 rows)
+- [results/lpci_rigorous_summary.jsonl](results/lpci_rigorous_summary.jsonl): Continuity session summaries (74 rows; historical TE field is non-citable)
+- [results/full_run_v1.jsonl](results/full_run_v1.jsonl): Scaffold-amplification matrix (720 rows)
 - [tasks/task_set.jsonl](tasks/task_set.jsonl): Task definitions
 
 ## Optional
@@ -37,4 +40,3 @@ Stack: Python 3.11+, Ollama (local), pyitlib + scipy for information-theoretic a
 Hermes Labs is an independent AI-reliability lab building open-source tools that catch silent failure modes in production AI.
 
 https://hermes-labs.ai
-

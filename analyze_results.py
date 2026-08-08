@@ -4,7 +4,7 @@ LangQuant — Information-Theoretic Analysis
 Uses pyitlib, infomeasure, scipy.stats for proper measurement.
 
 Analyzes:
-1. Matrix run (575 trials): significance of scaffold effects, MI between condition and score
+1. Matrix run (720 trials): significance of scaffold effects, MI between condition and score
 2. LPCI A/B test (40 turns): scaffold-output mutual information, KL divergence between conditions,
    significance of probe differences, transfer entropy (scaffold → output)
 """
@@ -79,7 +79,7 @@ def discretize(values: list[float], bins: int = 5) -> np.ndarray:
 
 def analyze_matrix():
     print("=" * 70)
-    print("ANALYSIS 1: MATRIX RUN (575 trials)")
+    print("ANALYSIS 1: MATRIX RUN (720 trials)")
     print("=" * 70)
 
     trials = []
@@ -300,7 +300,7 @@ def analyze_lpci():
         print(f"  {cond:12s}: H(response) = {h_r:.4f}  H(response|scaffold) = {h_r_given_s:.4f}  reduction = {h_r - h_r_given_s:.4f} bits")
 
     # ── 2g. Transfer entropy (scaffold_t → response_t) ───────────────────
-    print("\n## 2g. Transfer Entropy: scaffold(t-1) → response(t)")
+    print("\n## 2g. Historical transfer-entropy diagnostic (invalid for claim use)")
     print("  (Does previous scaffold predict current response better than current scaffold alone?)")
     for cond, data in [("naked", naked), ("compressed", compressed)]:
         if len(data) < 3:
@@ -319,9 +319,9 @@ def analyze_lpci():
 
         print(f"  {cond:12s}: TE = {te:.4f} bits")
         if te > 0.1:
-            print("    → Previous scaffold state carries information about current response beyond current scaffold")
+            print("    → Exploratory scalar output only; do not interpret as a state-sufficiency result")
         else:
-            print("    → Previous scaffold state adds little beyond current scaffold (memoryless / Markov)")
+            print("    → Exploratory scalar output only; do not interpret as memoryless or Markov")
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ Input is output is input is output.
 Architecture:
   - User sees: normal conversation
   - Model sees: [state scaffold] + [current message only]
-  - After each turn: state scaffold refreshes within fixed token budget
+  - After each turn: state scaffold refreshes under an approximate text budget
   - Conversation history is a UI concern, not a model concern
 
 Every token the model sees (except the current message) is pure state.

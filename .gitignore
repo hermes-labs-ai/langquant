@@ -3,7 +3,10 @@ __pycache__/
 *.pyc
 *.lock
 .DS_Store
+# The full turn table and run logs are intentionally excluded. The compact
+# session summary is committed so README claims remain inspectable.
 results/lpci_rigorous*.jsonl
+!results/lpci_rigorous_summary.jsonl
 results/rigorous_run*.log
 
 # Build artifacts

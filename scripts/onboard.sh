@@ -12,7 +12,9 @@ done
 
 run() {
   echo "+ $*"
-  [ "$DRY_RUN" = "0" ] && "$@"
+  if [ "$DRY_RUN" = "0" ]; then
+    "$@"
+  fi
 }
 
 if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)'; then

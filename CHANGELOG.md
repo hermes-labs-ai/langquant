@@ -7,10 +7,10 @@
 - A/B continuity test (`lpci_test.py`): 20 turns × 2 conditions, probes, scaffold evaluation, delta tracing
 - Information-theoretic analysis (`analyze_results.py`): MI, KL divergence, transfer entropy via pyitlib + scipy
 - Single-shot scaffold amplification harness (`run_experiment.py`): 4 models × 5 conditions × 12 tasks × 3 runs
-- Full result datasets: 40-row LPCI proof + 619-trial matrix run
+- Result datasets: 40-row exploratory LPCI trace + 720-trial matrix run
 - README with complete methodology, results, architecture, and honest caveats
 
-### Key Results
-- Stateless LLM maintained full 20-turn coherence via refreshing language scaffold
-- Transfer entropy ≈ 0.085 bits (compressed scaffold is Markov — complete state)
-- 2.5x compression at turn 20 (789 tokens scaffold vs 1,945 tokens conversation)
+### Historical experiment note
+- The A/B trace exercised the no-transcript, refreshing-scaffold mechanism for 20 turns.
+- Subsequent audit found that the continuity scorer is not uniform across conditions and that the transfer-entropy path is non-discriminating. Those outputs are preserved as experiment history, not validated behavioral or Markov-state claims; see `docs/EXPERIMENTS.md`.
+- The compressed trace ended at 789 counted scaffold words versus 1,945 counted conversation words in that single run; it was not fixed-size.
