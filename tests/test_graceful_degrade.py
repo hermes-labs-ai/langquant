@@ -11,6 +11,8 @@ import runpy
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from langquant import ConversationState, LangQuantSession, apply_delta, core
 
 
@@ -112,6 +114,57 @@ def test_approximate_budget_is_enforced_without_mutating_state():
     assert len(scaffold) <= 100
     assert scaffold.endswith("[State truncated]")
     assert dataclasses.asdict(state) == original
+
+
+def test_approximate_budget_preserves_hard_constraints():
+    constraint = "never send customer records to an external service"
+    state = ConversationState(
+        goal="preserve the release safety boundary",
+        facts=[f"low-priority fact {index} " * 8 for index in range(20)],
+        artifacts=[f"artifact-{index}" for index in range(10)],
+        constraints=[constraint],
+    )
+
+    scaffold = state.to_scaffold(approx_token_budget=60)
+
+    assert len(scaffold) <= 240
+    assert f"## Constraints (MUST respect)\n- NOT: {constraint}" in scaffold
+    assert scaffold.endswith("[State truncated]")
+
+
+@pytest.mark.parametrize("approx_token_budget", [0, 5])
+def test_approximate_budget_rejects_constraint_loss(approx_token_budget):
+    state = ConversationState(constraints=["keep this entire hard boundary"])
+
+    with pytest.raises(ValueError, match="too small to preserve hard constraints"):
+        state.to_scaffold(approx_token_budget=approx_token_budget)
+
+
+def test_chat_payload_preserves_constraints_under_budget():
+    constraint = "never send customer records to an external service"
+    session = LangQuantSession(approx_token_budget=60)
+    session.state = ConversationState(
+        goal="preserve the release safety boundary",
+        facts=[f"low-priority fact {index} " * 8 for index in range(20)],
+        constraints=[constraint],
+    )
+    requests = []
+    responses = iter([
+        _FakeResponse({"message": {"content": "current reply"}}),
+        _FakeResponse({"message": {"content": "{}"}}),
+    ])
+
+    def fake_urlopen(request, timeout):
+        requests.append((json.loads(request.data), timeout))
+        return next(responses)
+
+    with patch("langquant.core.urllib.request.urlopen", side_effect=fake_urlopen):
+        session.chat("current user text")
+
+    main_payload, _ = requests[0]
+    scaffold = main_payload["messages"][0]["content"]
+    assert len(scaffold) <= 240
+    assert f"## Constraints (MUST respect)\n- NOT: {constraint}" in scaffold
 
 
 def test_apply_delta_removes_multiple_items_and_deduplicates_additions():

@@ -53,8 +53,13 @@ class ConversationState:
     turn: int = 0
 
     def to_scaffold(self, approx_token_budget: int = 7000) -> str:
-        """Render state as a dense scaffold for model injection."""
+        """Render state as a dense scaffold for model injection.
+
+        Hard constraints are preserved in full when truncation is necessary.
+        A budget too small to contain them fails explicitly.
+        """
         sections = []
+        constraint_section = None
 
         if self.role or self.style:
             sections.append(f"## Identity\nRole: {self.role}\nStyle: {self.style}")
@@ -75,7 +80,10 @@ class ConversationState:
             sections.append("## Artifacts Produced\n" + "\n".join(f"- {a}" for a in self.artifacts))
 
         if self.constraints:
-            sections.append("## Constraints (MUST respect)\n" + "\n".join(f"- NOT: {c}" for c in self.constraints))
+            constraint_section = "## Constraints (MUST respect)\n" + "\n".join(
+                f"- NOT: {constraint}" for constraint in self.constraints
+            )
+            sections.append(constraint_section)
 
         if self.open_threads:
             sections.append("## Open Threads\n" + "\n".join(f"- {t}" for t in self.open_threads))
@@ -95,18 +103,36 @@ class ConversationState:
         # without mutating the underlying state while rendering it.
         char_budget = max(0, approx_token_budget * 4)
         if len(scaffold) > char_budget:
-            scaffold = self._trim_to_budget(scaffold, char_budget)
+            if constraint_section is not None:
+                priority_sections = list(sections)
+                priority_sections.remove(constraint_section)
+                priority_sections.insert(0, constraint_section)
+                scaffold = "\n\n".join(priority_sections)
+            scaffold = self._trim_to_budget(
+                scaffold,
+                char_budget,
+                required_prefix=constraint_section or "",
+            )
 
         return scaffold
 
-    def _trim_to_budget(self, scaffold: str, char_budget: int) -> str:
-        """Return a visibly truncated scaffold within the approximate budget."""
+    def _trim_to_budget(
+        self,
+        scaffold: str,
+        char_budget: int,
+        required_prefix: str = "",
+    ) -> str:
+        """Return a visibly truncated scaffold without dropping required text."""
         if len(scaffold) <= char_budget:
             return scaffold
-        if char_budget <= 0:
-            return ""
 
         marker = "\n\n[State truncated]"
+        if required_prefix and len(required_prefix) + len(marker) > char_budget:
+            raise ValueError(
+                "approx_token_budget is too small to preserve hard constraints"
+            )
+        if char_budget <= 0:
+            return ""
         if char_budget <= len(marker):
             return marker[:char_budget]
         return scaffold[: char_budget - len(marker)].rstrip() + marker
