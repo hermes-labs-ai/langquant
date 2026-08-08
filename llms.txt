@@ -1,6 +1,6 @@
 # LangQuant
 
-> Language State Compression and the Linguistically Persistent Cognitive Interface (LPCI).
+> Explicit conversational state outside the chat transcript.
 
 langquant is a scaffold-as-state research artifact testing whether a refreshing language scaffold can serve as the sole working state for a stateless LLM. The implementation sends the main model only a typed scaffold and the current user message; the UI transcript is stored separately and is not included in that request. A smaller local model refreshes the inspectable state after each turn.
 
@@ -20,8 +20,9 @@ Stack: Python 3.11+, Ollama (local), pyitlib + scipy for information-theoretic a
 - [TODO](TODO.md): Future work and practical applications roadmap
 
 ## Code
-- [lpci.py](lpci.py): Core prototype — SessionState, LPCISession, state extraction, scaffold refresh, interactive CLI
-- [lpci_test.py](lpci_test.py): A/B continuity test — 20 turns × 2 conditions, probes, scaffold evaluation, delta tracing
+- [langquant](langquant/): Core package — ConversationState, LangQuantSession, state extraction, scaffold refresh, interactive CLI
+- [conversation_ab_experiment.py](conversation_ab_experiment.py): A/B continuity experiment — 20 turns × 2 conditions, probes, scaffold evaluation, delta tracing
+- [continuity_experiment.py](continuity_experiment.py): Five-condition continuity experiment
 - [analyze_results.py](analyze_results.py): Information-theoretic analysis — MI, KL divergence, transfer entropy
 - [run_experiment.py](run_experiment.py): Single-shot scaffold amplification harness (4 models × 5 conditions × 12 tasks × 3 runs)
 

@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-title: "langquant: a scaffold-as-state research artifact for stateless-LLM continuity via a refreshing language scaffold"
+title: "LangQuant: explicit conversational state outside the chat transcript"
 abstract: >-
   langquant is a scaffold-as-state research artifact that tests whether a
   fixed-structure, per-turn-refreshed natural-language scaffold can serve as the
@@ -21,8 +21,8 @@ keywords:
   - AI reliability
   - LLM reliability
   - scaffold-as-state
-  - zero-LLM
-  - agent-memory
-  - information-theory
-  - context-compression
+  - conversational state
+  - state transition
+  - context engineering
 version: "0.1.0"
+date-released: "2026-08-08"

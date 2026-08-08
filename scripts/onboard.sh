@@ -28,6 +28,7 @@ run pip install --upgrade pip --quiet
 run pip install --quiet -e .
 
 if [ "$DRY_RUN" = "0" ]; then
-  python3 -c "import lpci; print('langquant lpci module loaded')" >/dev/null
+  python3 -c "from langquant import ConversationState, LangQuantSession" >/dev/null
+  langquant --help >/dev/null
   echo "onboard: OK (note: experiments require 'ollama serve' + 'ollama pull qwen3.5:4b')"
 fi

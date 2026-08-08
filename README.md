@@ -1,188 +1,152 @@
-<p align="center">
-  <a href="https://github.com/hermes-labs-ai/langquant"><img src="https://img.shields.io/github/stars/hermes-labs-ai/langquant" alt="GitHub stars"></a>
-  <a href="https://pypi.org/project/langquant/"><img src="https://img.shields.io/pypi/v/langquant?color=blue" alt="PyPI"></a>
-  <a href="https://github.com/hermes-labs-ai/langquant/blob/main/LICENSE"><img src="https://img.shields.io/github/license/hermes-labs-ai/langquant" alt="License"></a>
-  <a href="https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml"><img src="https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-</p>
+# LangQuant
 
-# langquant
+**Hold the state of a conversation outside the chat.**
 
-> Give a stateless local language model inspectable conversational state without sending it a transcript.
+LangQuant is experimental Python software for conversing with a local LLM from an explicit, refreshable language state instead of replaying the transcript on every turn.
 
-`langquant` is the reference implementation of LPCI (Linguistically Persistent Cognitive Interface), a Hermes Labs research prototype. On every turn, the main model receives exactly two messages:
+The conversational model receives only the current state and the current message. A second model reads the latest exchange and prepares the next state. The transcript can remain visible to the human without becoming model input.
 
-1. a rendered, typed session-state scaffold; and
-2. the current user message.
+```text
+current language state + current message
+                    │
+                    ▼
+          conversational model ────► reply
+                    │                  │
+                    └──── state updater┘
+                               │
+                               ▼
+                     next language state
 
-The prior conversation is never included in the main-model request. After the response, a smaller model extracts a JSON delta from the current scaffold and latest exchange. The delta updates `SessionState`, which is rendered for the next turn.
-
-The state is plain text and JSON: you can inspect it, save it, edit it, and restore it. No fine-tuning, vector store, or retrieval step is required.
-
-## Try it locally
-
-Requirements: Python 3.11+, [Ollama](https://ollama.com), and the two default local models.
-
-```bash
-git clone https://github.com/hermes-labs-ai/langquant.git
-cd langquant
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-ollama pull qwen3.5:9b
-ollama pull qwen3.5:4b
-python -m lpci
+transcript ──► human interface only
 ```
 
-Inside the session, `/state` shows the scaffold that will be sent on the next turn, `/history` shows the separate UI transcript, and `/save <path>` persists the typed state.
+A transcript records what happened. LangQuant keeps a working description of what matters now: the goal, decisions, facts, constraints, unresolved threads, vocabulary, and other explicit session state.
 
-As a library:
+## What this enables
+
+- **A different kind of local conversation.** Inspect, save, edit, and restore the state that moves the conversation forward.
+- **State and compaction experiments.** Change the schema, updater, model pair, or budget and observe what survives across turns.
+- **A primitive for internal tools.** Put an explicit state boundary between a conversational model and the rest of an application.
+- **Research on language as operational state.** Study when a language scaffold is adequate, what it omits, and how state updates fail.
+
+LangQuant is not a vector database, transcript search engine, user-profile store, or production memory layer. It is a small state-transition mechanism you can run and inspect.
+
+## Quick start
+
+Requirements: Python 3.11+ and a running [Ollama](https://ollama.com) service.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install langquant
+
+ollama pull qwen3.5:9b
+ollama pull qwen3.5:4b
+
+langquant --goal "Plan a small API change"
+```
+
+Inside the conversation:
+
+```text
+/state             show the exact state for the next model call
+/transcript        show the human-facing transcript
+/save state.json   save the current state
+/quit              end the session
+```
+
+Try `/state` before and after a message. The change you see is the context that carries forward; earlier chat messages are not replayed to the conversational model.
+
+## Use it from Python
 
 ```python
-from lpci import LPCISession
+from langquant import LangQuantSession
 
-session = LPCISession(
+session = LangQuantSession(
     main_model="qwen3.5:9b",
     state_model="qwen3.5:4b",
-    token_budget=7000,
+    approx_token_budget=7000,
 )
+
 session.configure(
     role="senior backend engineer",
     style="direct, concise, technical",
-    goal="design a rate limiter for the payments API",
+    goal="design a rate limiter for a payments API",
+    constraints=["no Redis"],
 )
 
-reply = session.chat("We decided to use a token bucket. Constraint: no Redis.")
+reply = session.chat("We decided to use a token bucket.")
 print(reply)
-print(session.show_state())
 
+print(session.show_state())
 session.save_state("state.json")
-session.load_state("state.json")
 ```
 
-## How it works
+The saved state is ordinary JSON. It can be inspected, versioned, edited, or loaded into a later session.
+
+```python
+from langquant import LangQuantSession
+
+session = LangQuantSession()
+session.load_state("state.json")
+print(session.chat("What should we decide next?"))
+```
+
+## The state transition
+
+For turn `t`, LangQuant has the following operational shape:
 
 ```text
-current SessionState
-        |
-        v
-render typed scaffold ───────────────┐
-        |                            |
-        v                            |
-[system: scaffold]                   |
-[user: current message]              |  no previous messages
-        |                            |  enter this request
-        v                            |
-main model (stateless)               |
-        |                            |
-        v                            |
-response                             |
-        |                            |
-        v                            |
-state extractor reads scaffold       |
-  + current message + response       |
-        |                            |
-        v                            |
-JSON delta -> update SessionState ───┘
+reply_t       = conversational_model(state_t, message_t)
+state_(t + 1) = state_updater(state_t, message_t, reply_t)
 ```
 
-`SessionState` is a dataclass with 12 fields: `role`, `style`, `goal`, `subgoals`, `decisions`, `facts`, `artifacts`, `constraints`, `open_threads`, `uncertainties`, `vocabulary`, and `turn`. Field names and rendered sections keep the state legible instead of hiding it in a latent vector.
+The prior transcript is not an argument to either call. In that narrow architectural sense, this is a first-order state-transition loop.
 
-The human-facing transcript is stored in `LPCISession.history`, but `LPCISession.chat()` does not read that list when building the main-model payload. The extractor receives only the current scaffold and the latest exchange.
+That shape does **not** establish that the current state contains everything a conversation could need. State adequacy is the research question. An updater can omit, distort, or misclassify information, and different schemas will preserve different things.
 
-## What the current evidence supports
+## What is in the state?
 
-The strongest result is structural and directly inspectable in `LPCISession.chat()`: the main-model request contains the rendered scaffold and current user message, while `self.history` is not read. The state updater and persistence path are likewise executable and inspectable.
+The reference schema is typed and deliberately legible:
 
-The behavioral study is useful experiment history, but its current scorer does not support a clean between-condition recall claim.
+| Field | Purpose |
+|---|---|
+| `role`, `style` | how the model should act and communicate |
+| `goal`, `subgoals` | what the session is trying to accomplish |
+| `decisions`, `facts` | current commitments and established session facts |
+| `artifacts` | files, code, or other outputs produced |
+| `constraints` | boundaries that must remain active |
+| `open_threads`, `uncertainties` | unresolved work and unknowns |
+| `vocabulary` | session-specific terms and meanings |
+| `turn` | current transition count |
 
-The rigorous run attempted 75 sessions: 3 planning topics × 5 context conditions × 5 replications. It completed 74 sessions (1,480 turns); one `startup`/`compressed` replication is absent. The main model was `qwen3.5:9b`, the state/summary model was `qwen3.5:4b`, and each session ran for 20 turns.
+The state updater proposes a JSON delta after each exchange. LangQuant applies that delta and renders the result as the next plain-language scaffold.
 
-The run reported the following harness outputs. “Mean probe score” is the mean of keyword-based recall probes within each completed session, then averaged by condition:
+## Inspect the boundary
 
-| Condition | Completed sessions | Mean probe score | Mean final state words | Main-model context |
-|---|---:|---:|---:|---|
-| `naked` | 15 | 0.846 | 975 | typed scaffold, without added contrastive instructions |
-| `compressed` | 14 | 0.831 | 1,026 | typed scaffold with contrastive instructions |
-| `naive` | 15 | 0.792 | 109 | freeform summary of the latest 10 messages |
-| `clamped` | 15 | 0.759 | 490 | typed scaffold with an approximately 500-word clamp |
-| `raw` | 15 | 0.000 | 0 | current message only |
-
-The often-quoted table contrast is `naked` 0.846 versus `raw` 0.000, with **n=15 completed sessions per arm**. The 74-session count describes the whole five-condition run; it is not the sample size for that contrast. However, the current evaluator gives `raw` an empty `SessionState`, so its decision-recall score is zero by construction even if a response happened to match an earlier fact. This table must not be interpreted as a validated 0.846-point model-recall lift.
-
-The naive-summary result is competitive. It scored 0.792 with a much smaller prompt than any unclamped typed scaffold, and it exceeded the clamped condition on this harness metric. The evaluator builds the naive arm's comparison state from prior assistant-response prefixes, while LPCI arms use extractor-produced decisions, so this is also not a uniform ground-truth comparison. LangQuant does **not** claim recall superiority over ordinary summarization. What the implementation demonstrates is a different system property: no transcript reaches the main model, while the refreshed state remains typed and inspectable.
-
-The committed 20-turn A/B trace and the separate 720-trial scaffold-amplification matrix are also included in [`results/`](results/). See [Experiment record and limitations](docs/EXPERIMENTS.md) for data provenance, scoring details, the naive baseline, estimator failure history, and exact reproduction commands.
-
-## What this does not establish
-
-- **Not production readiness.** State extraction can paraphrase, misclassify, or silently omit information.
-- **Not a validated recall effect.** The conditions are not scored against one shared ground-truth state, and the `raw` arm's zero is imposed by an empty evaluator state.
-- **Not semantic-memory completeness.** The exploratory score is keyword-based and derived partly from extractor-produced state; it is not blinded human adjudication.
-- **Not a fixed token bound.** The default renderer uses an approximate four-characters-per-token trim. Only the experimental `clamped` condition applies an additional hard word-count routine, and even that routine has fallback limits.
-- **Not scale beyond 20 turns.** No committed continuity run is longer.
-- **Not cross-model or cross-language generality.** The continuity study used one Qwen model family and English planning tasks.
-- **Not a claim that the current scaffold is a sufficient Markov state.** The attempted transfer-entropy analyses are not valid evidence for that proposition; the rigorous estimator was non-discriminating.
-- **Not a durability layer by itself.** `save_state()` and `load_state()` persist a single JSON state, but there is no concurrent store, audit log, retrieval system, or access-control layer.
-
-## LPCI and adjacent approaches
-
-LPCI combines three familiar ideas in one deliberately narrow design: stateless inference, externalized state, and structured context engineering. The label applies to this combination—zero transcript to the main model, a typed language scaffold, and model-assisted refresh—not to summarization or external memory in general.
-
-| Approach | What the main model receives | State representation | Fine-tune | Retrieval |
-|---|---|---|---:|---:|
-| Full transcript | all prior messages | transcript | no | no |
-| Naive rolling summary | freeform summary, sometimes recent messages | text summary | no | no |
-| MemGPT / Letta | recent context plus retrieved memory | tiered memory | no | yes |
-| Gist tokens / AutoCompressors | learned compressed representation | latent | yes | no |
-| **LPCI in this repo** | **typed scaffold + current message** | **inspectable text/JSON** | **no** | **no** |
-
-This is a structural comparison, not a benchmark ranking. Relevant prior work includes [MemGPT](https://arxiv.org/abs/2310.08560), [Gist Tokens](https://arxiv.org/abs/2304.08467), [AutoCompressors](https://arxiv.org/abs/2305.14788), and work on [long-context position effects](https://arxiv.org/abs/2307.03172).
-
-## Run the existing checks
-
-The unit tests do not require Ollama:
+The request-boundary tests use mocked model calls, so they do not require Ollama:
 
 ```bash
-python -m pytest -v --ignore=results/
+python -m pytest -q
 ruff check .
 ```
 
-The experiment runners do require the local models and can be slow. They overwrite result paths, so copy the committed files before intentionally reproducing a run.
+The focused tests verify that UI transcript content is absent from the conversational-model request and from the following state-update request. They also exercise graceful behavior when the local model service is unavailable.
 
-```bash
-python lpci_test.py
-python lpci_rigorous.py
-python run_experiment.py
-python analyze_results.py
-```
-
-No new model run is needed to inspect the shipped evidence. The JSONL files can be recounted directly; the commands are in [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+The repository includes exploratory conversation and scaffold experiments. Read
+[the experiment record](https://github.com/hermes-labs-ai/langquant/blob/main/docs/EXPERIMENTS.md)
+for their design, defects, and exact claim limits. Those artifacts are research
+material, not a benchmark claim that this approach outperforms summaries,
+retrieval, or full transcripts.
 
 ## Project status
 
-LangQuant is an alpha research prototype. Contributions that improve state fidelity, deterministic scoring, experiment manifests, or bounded-state behavior are especially welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+LangQuant is an alpha research prototype. The useful, inspectable result today is the mechanism itself: a local conversation can be wired through explicit current state while keeping prior messages out of the conversational-model request.
 
-If you use this repository in research, citation metadata is available in [CITATION.cff](CITATION.cff):
+Good contributions include stronger state schemas, validated state deltas, deterministic evaluation, exact budget enforcement, model-provider adapters, and tools for comparing state against the transcript it replaces.
 
-```bibtex
-@misc{langquant2026,
-  author = {Bosch, Rolando},
-  title  = {langquant: the Linguistically Persistent Cognitive Interface (LPCI) reference implementation},
-  year   = {2026},
-  url    = {https://github.com/hermes-labs-ai/langquant},
-  note   = {Hermes Labs}
-}
-```
-
-## About Hermes Labs
-
-[Hermes Labs](https://hermes-labs.ai) is an AI reliability engineering studio for product and engineering teams shipping production agents and LLM applications. We find the structural AI failures standard evals miss, then harden retrieval, memory, agents, and the language layers around production AI systems with runtime controls and defensible evidence. Everything released here is Apache-2.0, free, no SaaS tier. The longer-horizon framing is in [ambient assurance](https://hermes-labs.ai/archive/ambient-assurance).
-
-- Site: https://hermes-labs.ai
-- Contact: roli@hermes-labs.ai
-- Writing: https://rolibosch.substack.com
-- Video: https://youtube.com/@rolifromhermes
-- Full OSS stack: https://github.com/hermes-labs-ai
+See the [contribution guide](https://github.com/hermes-labs-ai/langquant/blob/main/CONTRIBUTING.md)
+to contribute.
 
 ## License
 

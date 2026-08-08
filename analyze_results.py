@@ -5,7 +5,7 @@ Uses pyitlib, infomeasure, scipy.stats for proper measurement.
 
 Analyzes:
 1. Matrix run (720 trials): significance of scaffold effects, MI between condition and score
-2. LPCI A/B test (40 turns): scaffold-output mutual information, KL divergence between conditions,
+2. LangQuant A/B test (40 turns): scaffold-output mutual information, KL divergence between conditions,
    significance of probe differences, transfer entropy (scaffold → output)
 """
 
@@ -180,11 +180,11 @@ def analyze_matrix():
             print(f"  {model:15s}: Kruskal-Wallis H={h:.3f}  p={p:.6f}  sig={'*' if p < 0.05 else 'ns'}")
 
 
-# ── Analysis 2: LPCI A/B Test ───────────────────────────────────────────────
+# ── Analysis 2: LangQuant A/B Test ──────────────────────────────────────────
 
-def analyze_lpci():
+def analyze_conversation_ab():
     print(f"\n\n{'=' * 70}")
-    print("ANALYSIS 2: LPCI A/B TEST (40 turns)")
+    print("ANALYSIS 2: LANGQUANT A/B TEST (40 turns)")
     print("=" * 70)
 
     results = []
@@ -326,4 +326,4 @@ def analyze_lpci():
 
 if __name__ == "__main__":
     analyze_matrix()
-    analyze_lpci()
+    analyze_conversation_ab()

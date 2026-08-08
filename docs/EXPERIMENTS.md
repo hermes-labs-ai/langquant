@@ -8,8 +8,8 @@ This document separates what can be inspected directly from what the current exp
 
 The architecture is executable and source-verifiable:
 
-- `LPCISession.chat()` renders `SessionState` and sends the main model a two-message payload: one system scaffold and the current user message.
-- `LPCISession.history` is updated for the user interface after the call; it is not read to build the main-model payload.
+- `LangQuantSession.chat()` renders `ConversationState` and sends the main model a two-message payload: one system scaffold and the current user message.
+- `LangQuantSession.transcript` is updated for the user interface after the call; it is not read to build the main-model payload.
 - `extract_state_delta()` receives the current scaffold plus the latest user/assistant exchange and asks the state model for a JSON delta.
 - `apply_delta()` updates the typed dataclass, and `show_state()`, `save_state()`, and `load_state()` expose the resulting state.
 
@@ -33,7 +33,7 @@ The matrix manifest correctly declares 720 planned trials (4 models × 5 conditi
 
 ### Design
 
-`lpci_rigorous.py` defines:
+`continuity_experiment.py` defines:
 
 - topics: `cooking`, `renovation`, and `startup`;
 - main model: `qwen3.5:9b`;
@@ -70,9 +70,9 @@ The 0.846 and 0.000 entries have n=15 completed sessions per arm. The number 74 
 
 These are **harness outputs, not a licensed model-recall contrast**. The metric is not evaluated uniformly across conditions:
 
-1. For LPCI conditions, `eval_probe()` searches the response for keywords drawn from the state extractor's current `decisions` list.
+1. For typed-state conditions, `eval_probe()` searches the response for keywords drawn from the state extractor's current `decisions` list.
 2. For `naive`, the runner constructs a synthetic evaluation state whose “decisions” are truncated prior assistant responses.
-3. For `raw`, the runner supplies an empty `SessionState`. The evaluator consequently reports zero decision recall regardless of the response text.
+3. For `raw`, the runner supplies an empty `ConversationState`. The evaluator consequently reports zero decision recall regardless of the response text.
 
 The raw result is therefore an instrumentation floor. It cannot show that the model itself recalled nothing. The naive result should be reported normally as the observed 0.792 harness score—it is competitive with the typed-scaffold scores—but it is not an apples-to-apples ground-truth comparison.
 
@@ -80,7 +80,12 @@ The smallest corrective evaluation is a scorer built from one frozen, condition-
 
 ## State-size evidence
 
-`SessionState.to_scaffold()` accepts a `token_budget`, but it estimates one token as four characters and mutates selected fields before re-rendering. It does not use the model tokenizer or assert the final encoded length. The default path should therefore be described as an approximate budget, not a hard fixed-token guarantee.
+`ConversationState.to_scaffold()` accepts an `approx_token_budget`, but it
+estimates one token as four characters and truncates the rendered scaffold to
+that character bound without mutating the state object. It does not use the
+model tokenizer or assert the final encoded length. The default path should
+therefore be described as an approximate budget, not a hard fixed-token
+guarantee.
 
 The `clamped` experiment adds a word-regex loop targeting 500 words. Its fallback can stop while retaining more state than requested, so it too should be treated as an experimental clamp rather than a general bounded-state proof.
 
@@ -153,7 +158,7 @@ jq -s '
 Inspect the main-model boundary:
 
 ```bash
-sed -n '247,335p' lpci.py
+sed -n '235,340p' langquant/core.py
 ```
 
 `python analyze_results.py` recomputes the existing matrix and single-trace analyses. Its transfer-entropy section is historical diagnostic output only and should not be promoted into a claim.
@@ -165,8 +170,8 @@ The runners require local Ollama models and overwrite result paths. Preserve exi
 ```bash
 ollama pull qwen3.5:9b
 ollama pull qwen3.5:4b
-python lpci_test.py
-python lpci_rigorous.py
+python conversation_ab_experiment.py
+python continuity_experiment.py
 python run_experiment.py
 ```
 

@@ -6,7 +6,7 @@
     "component": {
       "type": "application",
       "name": "langquant",
-      "version": "0.0.8",
+      "version": "0.1.0",
       "licenses": [{"license": {"id": "Apache-2.0"}}]
     }
   },

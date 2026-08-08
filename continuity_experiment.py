@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""
-LPCI Rigorous Validation — Addresses all reviewer critiques.
+"""Historical LangQuant five-condition continuity experiment.
 
-Fixes from v1 test:
-1. TE measured on scaffold EMBEDDINGS (768-dim nomic-embed-text), not entropy scalars
-2. Multiple replications (5 per condition)
-3. Three DIFFERENT conversation topics (not self-referential LPCI-about-LPCI)
-4. Baseline: naive summarization at same token count
-5. Hard-clamped budget option (true fixed K tokens every turn)
+This runner added replications, three topics, a naive-summary condition, and an
+experimental clamp. Its probe scorer is not uniform across conditions and its
+transfer-entropy path is non-discriminating because it falls back from a
+missing scaffold snapshot to response text. Preserve it for provenance; read
+docs/EXPERIMENTS.md before interpreting or rerunning it.
 
 Conditions:
   A. raw — zero context, no system prompt, just user message each turn
   B. naive — naive summarization (no scaffold structure, just "summarize the conversation so far")
   C. naked — no framing, no budget clamp
   D. compressed — contrastive IS/NOT markers, no budget clamp
-  E. clamped — contrastive markers + hard budget clamp at 500 tokens
+  E. clamped — contrastive markers + experimental ~500-word clamp
 
 Full run: 3 topics × 5 conditions × 5 replications = 75 sessions × 20 turns = 1500 turns
 """
 
-from lpci import LPCISession, SessionState, extract_state_delta, apply_delta
+from langquant import ConversationState, LangQuantSession, apply_delta, extract_state_delta
 import json
 import re
 import time
@@ -56,7 +54,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 
-# ── Three different conversation topics (NOT about LPCI) ────────────────────
+# ── Three different conversation topics ─────────────────────────────────────
 
 TOPICS = {
     "cooking": {
@@ -224,9 +222,11 @@ def get_naive_summary(conversation_history: list[dict], budget_words: int = 200,
 
 # ── Hard clamp scaffold to K tokens ─────────────────────────────────────────
 
-def clamp_scaffold(session: LPCISession, max_tokens: int = 500):
+def clamp_scaffold(session: LangQuantSession, max_tokens: int = 500):
     """Force-compress scaffold to fit within max_tokens by aggressive trimming."""
-    scaffold = session.state.to_scaffold(token_budget=session.token_budget)
+    scaffold = session.state.to_scaffold(
+        approx_token_budget=session.approx_token_budget
+    )
     tokens = re.findall(r'\b\w+\b', scaffold)
 
     while len(tokens) > max_tokens:
@@ -249,13 +249,15 @@ def clamp_scaffold(session: LPCISession, max_tokens: int = 500):
                 session.state.decisions = session.state.decisions[-3:]
             break
 
-        scaffold = session.state.to_scaffold(token_budget=session.token_budget)
+        scaffold = session.state.to_scaffold(
+            approx_token_budget=session.approx_token_budget
+        )
         tokens = re.findall(r'\b\w+\b', scaffold)
 
 
 # ── Probe evaluation ────────────────────────────────────────────────────────
 
-def eval_probe(turn_data: dict, response: str, state: SessionState) -> dict:
+def eval_probe(turn_data: dict, response: str, state: ConversationState) -> dict:
     """Evaluate model response on probe turns."""
     probe_type = turn_data["type"]
 
@@ -355,12 +357,15 @@ def run_session(
         constraints = []
         style = ""
 
-    # For naive, we manage conversation history ourselves
-    # For raw, no history at all
-    naive_history = []
+    # The summary condition manages its own transcript; raw has none.
+    naive_transcript = []
 
     if condition not in ("naive", "raw"):
-        session = LPCISession(main_model=model, state_model=state_model, token_budget=7000)
+        session = LangQuantSession(
+            main_model=model,
+            state_model=state_model,
+            approx_token_budget=7000,
+        )
         session.configure(
             role="collaborative planning assistant",
             style=style,
@@ -387,10 +392,14 @@ def run_session(
             scaffold_text = ""
         elif condition == "naive":
             # Naive: summarize conversation so far, use as system prompt
-            naive_history.append({"role": "user", "content": user_msg})
+            naive_transcript.append({"role": "user", "content": user_msg})
 
-            if len(naive_history) > 2:
-                summary = get_naive_summary(naive_history, budget_words=200, model=state_model)
+            if len(naive_transcript) > 2:
+                summary = get_naive_summary(
+                    naive_transcript,
+                    budget_words=200,
+                    model=state_model,
+                )
             else:
                 summary = "Beginning of conversation."
 
@@ -400,11 +409,13 @@ def run_session(
             ]
             scaffold_text = summary
         else:
-            # LPCI conditions
+            # Typed-state conditions
             if condition == "clamped" and i > 1:
                 clamp_scaffold(session, max_tokens=clamp_budget)
 
-            scaffold_text = session.state.to_scaffold(token_budget=session.token_budget)
+            scaffold_text = session.state.to_scaffold(
+                approx_token_budget=session.approx_token_budget
+            )
             messages = [
                 {"role": "system", "content": scaffold_text},
                 {"role": "user", "content": user_msg},
@@ -438,16 +449,20 @@ def run_session(
         if condition == "raw":
             scaffold_tokens = 0
             # Create empty state for probe eval — raw has no context
-            probe_state = SessionState()
+            probe_state = ConversationState()
         elif condition == "naive":
-            naive_history.append({"role": "assistant", "content": response})
+            naive_transcript.append({"role": "assistant", "content": response})
             scaffold_tokens = len(re.findall(r'\b\w+\b', scaffold_text))
             # Create minimal state for probe eval
-            probe_state = SessionState()
-            probe_state.decisions = [m["content"][:200] for m in naive_history if m["role"] == "assistant"]
+            probe_state = ConversationState()
+            probe_state.decisions = [
+                message["content"][:200]
+                for message in naive_transcript
+                if message["role"] == "assistant"
+            ]
         else:
-            session.history.append({"role": "user", "content": user_msg})
-            session.history.append({"role": "assistant", "content": response})
+            session.transcript.append({"role": "user", "content": user_msg})
+            session.transcript.append({"role": "assistant", "content": response})
 
             # Extract + apply delta
             delta = extract_state_delta(
@@ -504,7 +519,7 @@ def run_session(
 # ── Proper Transfer Entropy on embeddings ────────────────────────────────────
 
 def compute_te_from_embeddings(results: list[dict]) -> dict:
-    """Compute transfer entropy using scaffold embedding similarities, not scalar entropy.
+    """Run the historical, non-citable embedding-similarity TE estimator.
 
     TE(scaffold → response) = H(response_t | response_{t-1}) - H(response_t | response_{t-1}, scaffold_t)
 
@@ -515,7 +530,8 @@ def compute_te_from_embeddings(results: list[dict]) -> dict:
     if len(results) < 4:
         return {"te": 0, "note": "too few turns"}
 
-    # Get full embeddings for this session
+    # Historical defect: runner rows omit ``scaffold_snapshot`` and therefore
+    # fall back to the response. Do not interpret the resulting TE as evidence.
     scaffold_embs = []
     response_embs = []
 
@@ -589,7 +605,8 @@ def main():
     total_sessions = len(TOPICS) * len(conditions) * n_replications
 
     print("=" * 70)
-    print("LPCI RIGOROUS VALIDATION")
+    print("LANGQUANT CONTINUITY EXPERIMENT")
+    print("WARNING: historical scorer and TE estimator are invalid for claim use")
     print(f"Topics: {list(TOPICS.keys())}")
     print(f"Conditions: {conditions}")
     print(f"Replications: {n_replications}")

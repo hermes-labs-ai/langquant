@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-LPCI Continuity Test — A/B with probes throughout.
+LangQuant continuity experiment — A/B with probes throughout.
 
 Condition A: naked — raw structured state, zero constraints, zero framing
 Condition B: compressed — contrastive IS/NOT markers in constraints and style
@@ -9,7 +9,7 @@ Probes at turns 4, 8, 12, 16, 20 test recall, contradiction resistance,
 and synthesis at different depths. Scaffold quality is evaluated every turn.
 """
 
-from lpci import LPCISession, SessionState, extract_state_delta, apply_delta
+from langquant import ConversationState, LangQuantSession, apply_delta, extract_state_delta
 import copy
 import json
 import math
@@ -23,7 +23,7 @@ from pathlib import Path
 # ── Rich domain vocabulary ───────────────────────────────────────────────────
 
 INITIAL_VOCABULARY = {
-    "LPCI": "Linguistically Persistent Cognitive Interface — language as state for stateless models",
+    "LangQuant": "explicit language state for stateless model calls",
     "scaffold": "structured language state injected into model context, replaces conversation history",
     "compression ratio": "behavioral complexity of output divided by entropy of input scaffold",
     "contrastive markers": "NOT-X patterns that constrain model behavior more effectively than positive instructions",
@@ -46,7 +46,7 @@ NAKED_CONSTRAINTS = []  # Nothing. Pure state, no framing.
 
 COMPRESSED_CONSTRAINTS = [
     "NOT: summarize or repeat. This is NOT a recap.",
-    "NOT: assume conversation history exists. There IS none. The scaffold IS your only memory.",
+    "NOT: assume a prior transcript is in context. The scaffold is your only carried state.",
     "NOT: filler, hedging-as-padding, generic disclaimers. Every word earns its place.",
     "NOT: confuse decided (final, irreversible) with open (unresolved, still debatable).",
     "NOT: invent. If it's not in the scaffold, you don't know it. Say so.",
@@ -59,7 +59,7 @@ COMPRESSED_CONSTRAINTS = [
 
 TURNS = [
     # --- Phase 1: establish context, early decisions ---
-    {"msg": "We're designing the LPCI prototype. Core idea: model is stateless, scaffold IS the state. What should we validate first?",
+    {"msg": "We're designing LangQuant. Core idea: model calls are stateless and the scaffold carries current state. What should we validate first?",
      "type": "normal"},
 
     {"msg": "Let's focus on decision vs open-question detection in the state extractor. That's the hardest part.",
@@ -88,7 +88,7 @@ TURNS = [
     {"msg": "Decision: constraints get 25% of token budget (highest semantic curvature based on prior experiments). Decisions 15%, facts 15%, goal 10%, vocab 10%, open threads 10%, uncertainties 5%, buffer 10%.",
      "type": "normal"},
 
-    {"msg": "How do we measure if LPCI works? We need a continuity test.",
+    {"msg": "How do we measure if LangQuant works? We need a continuity test.",
      "type": "normal"},
 
     {"msg": "Decision: vocabulary eviction is LRU with 10-turn window.",
@@ -99,7 +99,7 @@ TURNS = [
      "type": "probe_recall", "expects_decisions": 6, "turn_ref": "all"},
 
     # --- Phase 2: pivot topic, stress test ---
-    {"msg": "New topic: what if LPCI handles agent-to-agent handoffs? Agent A produces scaffold, Agent B consumes it. The scaffold IS the handoff.",
+    {"msg": "New topic: what if LangQuant handles agent-to-agent handoffs? Agent A produces scaffold, Agent B consumes it. The scaffold is the handoff.",
      "type": "normal"},
 
     {"msg": "Decision: scaffold persists as JSON on disk. Session resume loads JSON. Model doesn't know session was interrupted.",
@@ -122,14 +122,14 @@ TURNS = [
      "type": "normal"},
 
     # PROBE 5 (turn 20): final exam — full recall, synthesis, and a sneaky contradiction
-    {"msg": "Final test. Three things: (1) List every decision in order. (2) We never decided on a state extractor model, right? (3) Summarize the full LPCI architecture in under 80 words, referencing at least 3 specific decisions.",
+    {"msg": "Final test. Three things: (1) List every decision in order. (2) We never decided on a state updater model, right? (3) Summarize the full LangQuant architecture in under 80 words, referencing at least 3 specific decisions.",
      "type": "probe_final", "expects_decisions": 8, "contains_false_claim": "We never decided on a state extractor model"},
 ]
 
 
 # ── Scaffold Quality Metrics ─────────────────────────────────────────────────
 
-def eval_scaffold(scaffold: str, state: SessionState, turn: int) -> dict:
+def eval_scaffold(scaffold: str, state: ConversationState, turn: int) -> dict:
     """Evaluate scaffold quality independent of model response."""
     tokens = re.findall(r'\b\w+\b', scaffold.lower())
     token_count = len(tokens)
@@ -183,7 +183,7 @@ def eval_scaffold(scaffold: str, state: SessionState, turn: int) -> dict:
 
 # ── Probe Evaluation ─────────────────────────────────────────────────────────
 
-def eval_probe(turn_data: dict, response: str, state: SessionState) -> dict:
+def eval_probe(turn_data: dict, response: str, state: ConversationState) -> dict:
     """Evaluate model response on probe turns."""
     turn = turn_data
     probe_type = turn["type"]
@@ -272,15 +272,15 @@ def run_condition(
 ) -> list[dict]:
     """Run all turns, log everything."""
 
-    session = LPCISession(
+    session = LangQuantSession(
         main_model=model,
         state_model=state_model,
-        token_budget=7000,
+        approx_token_budget=7000,
     )
 
-    session.state.role = "AI research collaborator working on LPCI prototype"
+    session.state.role = "AI research collaborator working on LangQuant"
     session.state.style = style
-    session.state.goal = "Design and validate the LPCI prototype"
+    session.state.goal = "Design and validate the LangQuant prototype"
     session.state.vocabulary = dict(INITIAL_VOCABULARY)
     session.state.facts = list(INITIAL_FACTS)
     session.state.constraints = list(constraints)
@@ -306,7 +306,9 @@ def run_condition(
         state_before = copy.deepcopy(session.state)
 
         # --- Manual chat to capture delta ---
-        scaffold = session.state.to_scaffold(token_budget=session.token_budget)
+        scaffold = session.state.to_scaffold(
+            approx_token_budget=session.approx_token_budget
+        )
         messages = [
             {"role": "system", "content": scaffold},
             {"role": "user", "content": user_msg},
@@ -335,8 +337,8 @@ def run_condition(
         except Exception as e:
             response = f"[Error: {e}]"
 
-        session.history.append({"role": "user", "content": user_msg})
-        session.history.append({"role": "assistant", "content": response})
+        session.transcript.append({"role": "user", "content": user_msg})
+        session.transcript.append({"role": "assistant", "content": response})
 
         # Extract + apply delta
         delta = extract_state_delta(
@@ -419,7 +421,7 @@ def main():
     Path("results").mkdir(exist_ok=True)
 
     print("=" * 70)
-    print("LPCI A/B CONTINUITY TEST")
+    print("LANGQUANT A/B CONTINUITY EXPERIMENT")
     print("A: naked (zero constraints, zero framing, pure state)")
     print("B: compressed (contrastive IS/NOT markers)")
     print("20 turns each | probes at 4, 8, 12, 16, 20 | full scaffold trace")

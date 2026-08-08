@@ -1,14 +1,17 @@
 """Graceful degradation: when Ollama is unreachable, state extraction returns
-an empty delta instead of crashing — letting the LPCI loop continue with
+an empty delta instead of crashing, letting the LangQuant loop continue with
 existing state. This is the contract that lets a long-running experiment survive
 a transient ollama hiccup.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
+import runpy
+from pathlib import Path
 from unittest.mock import patch
 
-import lpci
+from langquant import ConversationState, LangQuantSession, apply_delta, core
 
 
 class _FakeResponse:
@@ -26,10 +29,13 @@ class _FakeResponse:
 
 
 def test_state_extraction_returns_empty_when_ollama_down():
-    state = lpci.SessionState()
+    state = ConversationState()
 
-    with patch("lpci.urllib.request.urlopen", side_effect=ConnectionError("ollama down")):
-        delta = lpci.extract_state_delta(
+    with patch(
+        "langquant.core.urllib.request.urlopen",
+        side_effect=ConnectionError("ollama down"),
+    ):
+        delta = core.extract_state_delta(
             state,
             user_message="hello",
             assistant_response="hi",
@@ -39,17 +45,17 @@ def test_state_extraction_returns_empty_when_ollama_down():
 
 
 def test_apply_delta_with_empty_delta_is_noop():
-    state = lpci.SessionState()
+    state = ConversationState()
     state.goal = "original-goal"
-    lpci.apply_delta(state, {})
+    apply_delta(state, {})
     assert state.goal == "original-goal"
 
 
 def test_main_model_payload_excludes_ui_history():
     """The transcript may exist for display but must not enter model context."""
-    session = lpci.LPCISession()
+    session = LangQuantSession()
     session.configure(goal="current goal")
-    session.history = [
+    session.transcript = [
         {"role": "user", "content": "prior secret user text"},
         {"role": "assistant", "content": "prior secret assistant text"},
     ]
@@ -63,7 +69,7 @@ def test_main_model_payload_excludes_ui_history():
         requests.append((json.loads(request.data), timeout))
         return next(responses)
 
-    with patch("lpci.urllib.request.urlopen", side_effect=fake_urlopen):
+    with patch("langquant.core.urllib.request.urlopen", side_effect=fake_urlopen):
         assert session.chat("current user text") == "current reply"
 
     main_payload, main_timeout = requests[0]
@@ -80,3 +86,84 @@ def test_main_model_payload_excludes_ui_history():
     assert "current user text" in extractor_prompt
     assert "current reply" in extractor_prompt
     assert "prior secret" not in extractor_prompt
+
+
+def test_public_api_uses_langquant_names():
+    state = ConversationState(goal="inspectable state")
+    session = LangQuantSession()
+    session.state = state
+
+    assert session.show_state().startswith("## Current Goal\ninspectable state")
+    assert session.show_transcript() == []
+    assert not hasattr(session, "history")
+    assert not hasattr(session, "show_history")
+
+
+def test_approximate_budget_is_enforced_without_mutating_state():
+    state = ConversationState(
+        goal="preserve the original state object",
+        facts=[f"fact {index}" for index in range(20)],
+        uncertainties=["one", "two", "three", "four"],
+    )
+    original = dataclasses.asdict(state)
+
+    scaffold = state.to_scaffold(approx_token_budget=25)
+
+    assert len(scaffold) <= 100
+    assert scaffold.endswith("[State truncated]")
+    assert dataclasses.asdict(state) == original
+
+
+def test_apply_delta_removes_multiple_items_and_deduplicates_additions():
+    state = ConversationState(
+        subgoals=["alpha task", "beta task", "gamma task"],
+        facts=["existing fact"],
+    )
+
+    apply_delta(
+        state,
+        {
+            "remove_subgoals": ["alpha", "beta"],
+            "add_facts": ["existing fact", "new fact", 42],
+            "add_vocabulary": {"term": "meaning", "invalid": 42},
+        },
+    )
+
+    assert state.subgoals == ["gamma task"]
+    assert state.facts == ["existing fact", "new fact"]
+    assert state.vocabulary == {"term": "meaning"}
+
+
+def test_save_and_load_state_round_trip(tmp_path):
+    path = tmp_path / "state.json"
+    original = LangQuantSession()
+    original.state = ConversationState(
+        goal="ship an installable package",
+        constraints=["keep the transcript outside the model request"],
+        turn=3,
+    )
+
+    original.save_state(path)
+    restored = LangQuantSession()
+    restored.load_state(path)
+
+    assert restored.state == original.state
+    assert restored.transcript == []
+
+
+def test_resume_runner_import_is_side_effect_free(tmp_path, monkeypatch):
+    runner = Path(__file__).parents[1] / "resume_continuity_experiment.py"
+    monkeypatch.chdir(tmp_path)
+
+    namespace = runpy.run_path(
+        str(runner),
+        run_name="resume_continuity_experiment_import",
+    )
+
+    assert not (tmp_path / "results").exists()
+    assert namespace["RESUME_CONDITIONS"] == (
+        "naked",
+        "compressed",
+        "clamped",
+        "naive",
+    )

@@ -5,8 +5,8 @@ import json
 import numpy as np
 from pathlib import Path
 
-from lpci_rigorous import (
-    TOPICS, run_session, compute_te_from_embeddings,
+from continuity_experiment import (
+    TOPICS, compute_te_from_embeddings, run_session,
 )
 
 
