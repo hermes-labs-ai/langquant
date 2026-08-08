@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "langquant"
 version = "0.1.0"
-description = "LPCI: Statefulness Through Language for Stateless Models"
+description = "Explicit conversational state outside the chat transcript"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -18,45 +18,72 @@ maintainers = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = [
+    "llm",
+    "conversation-state",
+    "context-engineering",
+    "ollama",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2,<2",
+    "pytest>=8,<9",
+    "ruff~=0.16.1",
+    "twine>=6.2,<7",
+]
+experiments = [
+    "numpy>=2,<3",
+    "pyitlib>=0.3.1,<0.4",
+    "scipy>=1.14,<2",
 ]
 
 [project.urls]
 Homepage = "https://hermes-labs.ai"
 Repository = "https://github.com/hermes-labs-ai/langquant"
+Issues = "https://github.com/hermes-labs-ai/langquant/issues"
+Changelog = "https://github.com/hermes-labs-ai/langquant/blob/main/CHANGELOG.md"
+
+[project.scripts]
+langquant = "langquant.cli:main"
+
+[tool.setuptools]
+packages = ["langquant"]
 
 [tool.ruff.lint.per-file-ignores]
 # analyze_results.py: import order and the two `set(...)` generator expressions
-# are unchanged from the script version that produced the published LPCI figures;
+# are unchanged from the script version that produced the historical figures;
 # ruff's cosmetic-only rewrites (import sort, generator->comprehension) are
 # suppressed rather than applied to a script whose output is cited (I001, C401).
 "analyze_results.py" = ["I001", "C401"]
-# lpci.py: broad `except Exception` around Ollama HTTP calls is the
+# langquant/core.py: broad `except Exception` around Ollama HTTP calls is the
 # graceful-degradation contract asserted by tests/test_graceful_degrade.py —
 # narrowing would change which failures return an empty delta vs. propagate (BLE001).
-"lpci.py" = ["BLE001"]
-# lpci_resume_10.py intentionally loads prior-run state before heavy imports
-# (progress feedback) — this is also why the import block reads as "unsorted"
+"langquant/core.py" = ["BLE001"]
+# resume_continuity_experiment.py loads prior-run state before heavy imports when
+# executed (progress feedback). The import order is therefore intentionally local
 # (I001). The blind except (BLE001) is the same graceful-degradation contract
-# as lpci.py, and the per-item f.write (FURB122) preserves the exact
+# as langquant/core.py, and the per-item f.write (FURB122) preserves the exact
 # incremental jsonl write pattern used to produce results/lpci_rigorous_summary.jsonl.
-"lpci_resume_10.py" = ["E402", "I001", "BLE001", "FURB122"]
-# lpci_rigorous.py: local-then-stdlib import order (I001) and the raw/naked
+"resume_continuity_experiment.py" = ["I001", "BLE001", "FURB122"]
+# continuity_experiment.py: local-then-stdlib import order (I001) and the raw/naked
 # branch split (SIM114) are unchanged from the version that generated the
 # rigorous-validation results; blind excepts (BLE001) are the same per-session
-# graceful-degradation contract as lpci.py, and f.write-in-loop (FURB122)
+# graceful-degradation contract as langquant/core.py, and f.write-in-loop (FURB122)
 # preserves the exact incremental jsonl write pattern.
-"lpci_rigorous.py" = ["I001", "BLE001", "SIM114", "FURB122"]
-# lpci_test.py uses one-line if: print() for compact debug output (E701).
+"continuity_experiment.py" = ["I001", "BLE001", "SIM114", "FURB122"]
+# conversation_ab_experiment.py uses one-line if: print() for compact debug output (E701).
 # Import order (I001) is unchanged from the published A/B test run; blind
-# except (BLE001) is the same graceful-degradation contract as lpci.py;
+# except (BLE001) is the same graceful-degradation contract as langquant/core.py;
 # f.write-in-loop (FURB122) preserves the exact results/lpci_ab_test.jsonl
 # write pattern.
-"lpci_test.py" = ["E701", "I001", "BLE001", "FURB122"]
+"conversation_ab_experiment.py" = ["E701", "I001", "BLE001", "FURB122"]
 # postprocess_te.py: import order is unchanged from the version that produced
 # the TE post-processing results (I001).
 "postprocess_te.py" = ["I001"]
@@ -68,6 +95,6 @@ Repository = "https://github.com/hermes-labs-ai/langquant"
 "run_experiment.py" = ["I001", "BLE001", "UP017"]
 # run_raw.py: import order (I001) is unchanged from the version used for the
 # raw-condition run; blind except (BLE001) is the same per-session
-# graceful-degradation contract as lpci_rigorous.py, and f.write-in-loop
+# graceful-degradation contract as continuity_experiment.py, and f.write-in-loop
 # (FURB122) preserves the exact incremental jsonl write pattern.
 "run_raw.py" = ["I001", "BLE001", "FURB122"]

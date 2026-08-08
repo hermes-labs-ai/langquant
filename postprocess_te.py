@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Post-process rigorous run: batch-embed scaffold+response, compute TE per session.
+"""Historical rigorous-run TE post-processing; invalid for claim use.
 
-Run this AFTER lpci_rigorous.py finishes. It reads results/lpci_rigorous.jsonl,
-embeds all scaffold_text and response fields, computes transfer entropy per session,
-and updates results/lpci_rigorous_summary.jsonl with real TE values.
+Run this after continuity_experiment.py finishes. It reads the historical raw file,
+embeds all scaffold_text and response fields, runs the historical transfer-entropy
+estimator per session, and updates results/lpci_rigorous_summary.jsonl.
+
+The current rigorous rows do not persist the scaffold field consumed by the
+estimator, and the downstream helper falls back to response text. This makes
+the historical output non-discriminating. See docs/EXPERIMENTS.md.
 """
 
 import json
@@ -12,8 +16,8 @@ import time
 import numpy as np
 from pathlib import Path
 
-# Reuse helpers from lpci_rigorous
-from lpci_rigorous import embed_text, compute_te_from_embeddings
+# Reuse helpers from the continuity experiment.
+from continuity_experiment import compute_te_from_embeddings, embed_text
 
 
 def main():
@@ -21,7 +25,10 @@ def main():
     summary_path = Path("results/lpci_rigorous_summary.jsonl")
 
     if not results_path.exists():
-        print("ERROR: results/lpci_rigorous.jsonl not found. Run lpci_rigorous.py first.")
+        print(
+            "ERROR: historical raw results not found. "
+            "Run continuity_experiment.py first."
+        )
         sys.exit(1)
 
     # Load all results

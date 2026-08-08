@@ -6,29 +6,46 @@ on:
   pull_request:
     branches: [main]
 
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      # Compatible-release pin: takes 0.16.x bug fixes, but not 0.17, where
-      # new default rules land. An unpinned ruff turns an upstream release into
-      # a red build on code nobody touched. Bump the minor deliberately.
-      - run: pip install "ruff~=0.16.1"
-      - run: ruff check .
+permissions:
+  contents: read
 
+jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install pytest pyitlib scipy numpy
-      - run: pytest -v --ignore=results/
+          cache: pip
+      - name: Install development dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: python -m pytest -q
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install build tooling
+        run: python -m pip install -e ".[dev]"
+      - name: Build and check distributions
+        run: |
+          python -m build
+          python -m twine check dist/*
+      - name: Verify the installed wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/langquant-wheel"
+          "$RUNNER_TEMP/langquant-wheel/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/langquant-wheel/bin/python" -c "from langquant import ConversationState, LangQuantSession"
+          "$RUNNER_TEMP/langquant-wheel/bin/python" -m langquant --help
+          "$RUNNER_TEMP/langquant-wheel/bin/langquant" --help

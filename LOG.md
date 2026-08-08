@@ -1,5 +1,13 @@
 # LangQuant — Project Log
 
+> **Evidence notice (2026-08-08):** This is a chronological research log and
+> preserves superseded interpretations. Transfer-entropy/Markov claims below
+> are retracted and non-citable: the rigorous estimator falls back from a
+> missing scaffold field to response text and is non-discriminating. The
+> continuity scorer also differs by condition and forces the raw-arm recall
+> score to zero through an empty evaluator state. Current claim boundaries are
+> in `README.md` and `docs/EXPERIMENTS.md`.
+
 ## 2026-03-28: Project Genesis
 
 ### Origin

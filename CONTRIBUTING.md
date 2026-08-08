@@ -7,23 +7,29 @@ Thanks for your interest! LangQuant is a research project by [Hermes Labs](https
 ```bash
 git clone https://github.com/hermes-labs-ai/langquant.git
 cd langquant
-pip install pytest pyitlib scipy numpy
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev,experiments]"
 ```
 
 ## Running Tests
 
 ```bash
-pytest -v
+python -m pytest -v
+ruff check .
 ```
 
-Note: Some tests require [Ollama](https://ollama.ai) with `qwen3.5:9b` and `qwen3.5:4b` models pulled locally. Tests that require Ollama will be skipped if it's not available.
+The unit tests use mocked HTTP calls and do not require Ollama. The experiment
+runners do require a local [Ollama](https://ollama.com) service and model
+downloads; read [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) before running them
+because they write under `results/`.
 
 ## Submitting Changes
 
 1. Fork the repo and create a feature branch
 2. Make your changes
 3. Run `ruff check .` and fix any issues
-4. Run `pytest -v` and ensure tests pass
+4. Run `python -m pytest -v` and ensure tests pass
 5. Open a PR with a clear description
 
 ## Code Style

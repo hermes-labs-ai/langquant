@@ -1,9 +1,5 @@
 name: Publish to PyPI
 
-# Fires when you publish a GitHub Release. That same Release also triggers
-# Zenodo DOI minting (if the repo is toggled on in Zenodo) — so one action
-# (publish a Release) mints the DOI AND ships to PyPI, both green.
-
 on:
   release:
     types: [published]
@@ -13,22 +9,60 @@ permissions:
 
 jobs:
   publish:
-    name: Build and publish to PyPI
+    name: Validate and publish the release artifact
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
-      id-token: write   # required for PyPI Trusted Publishing (OIDC) — no API token needed
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+          cache: pip
 
-      - name: Build sdist and wheel
+      - name: Verify tag and package versions match
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          python -m pip install --upgrade pip build
-          python -m build
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+          with Path("pyproject.toml").open("rb") as stream:
+              package_version = tomllib.load(stream)["project"]["version"]
+          tag_version = os.environ["RELEASE_TAG"].removeprefix("v")
+          if package_version != tag_version:
+              raise SystemExit(
+                  f"release tag {tag_version!r} does not match package version {package_version!r}"
+              )
+          PY
+
+      - name: Install validation tooling
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run release checks
+        run: |
+          ruff check .
+          python -m pytest -q
+
+      - name: Build and check distributions
+        run: |
+          python -m build
+          python -m twine check dist/*
+
+      - name: Verify the installed wheel
+        run: |
+          python -m venv "$RUNNER_TEMP/langquant-release"
+          "$RUNNER_TEMP/langquant-release/bin/python" -m pip install dist/*.whl
+          "$RUNNER_TEMP/langquant-release/bin/python" -c "from langquant import ConversationState, LangQuantSession"
+          "$RUNNER_TEMP/langquant-release/bin/python" -m langquant --help
+          "$RUNNER_TEMP/langquant-release/bin/langquant" --help
+
+      - name: Publish to PyPI through trusted publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

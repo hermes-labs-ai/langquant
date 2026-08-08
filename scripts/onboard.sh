@@ -12,7 +12,9 @@ done
 
 run() {
   echo "+ $*"
-  [ "$DRY_RUN" = "0" ] && "$@"
+  if [ "$DRY_RUN" = "0" ]; then
+    "$@"
+  fi
 }
 
 if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)'; then
@@ -26,6 +28,7 @@ run pip install --upgrade pip --quiet
 run pip install --quiet -e .
 
 if [ "$DRY_RUN" = "0" ]; then
-  python3 -c "import lpci; print('langquant lpci module loaded')" >/dev/null
+  python3 -c "from langquant import ConversationState, LangQuantSession" >/dev/null
+  langquant --help >/dev/null
   echo "onboard: OK (note: experiments require 'ollama serve' + 'ollama pull qwen3.5:4b')"
 fi

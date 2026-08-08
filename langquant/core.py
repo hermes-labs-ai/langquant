@@ -1,16 +1,10 @@
-#!/usr/bin/env python3
-"""
-LPCI — Linguistically Persistent Cognitive Interface
-Hermes Labs, 2026
-
-The model is stateless. The text is the state.
-Input is output is input is output.
+"""LangQuant's explicit conversational-state loop.
 
 Architecture:
   - User sees: normal conversation
   - Model sees: [state scaffold] + [current message only]
-  - After each turn: state scaffold refreshes within fixed token budget
-  - Conversation history is a UI concern, not a model concern
+  - After each turn: state scaffold refreshes under an approximate text budget
+  - The transcript is a UI concern, not a model concern
 
 Every token the model sees (except the current message) is pure state.
 """
@@ -29,8 +23,8 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 # ── State Schema ─────────────────────────────────────────────────────────────
 
 @dataclass
-class SessionState:
-    """The entire cognitive state of a session. This IS the model's memory."""
+class ConversationState:
+    """Explicit language state carried between conversation turns."""
 
     # Identity & mode
     role: str = ""                    # Who the model is in this session
@@ -58,9 +52,14 @@ class SessionState:
     # Turn counter
     turn: int = 0
 
-    def to_scaffold(self, token_budget: int = 7000) -> str:
-        """Render state as a dense scaffold for model injection."""
+    def to_scaffold(self, approx_token_budget: int = 7000) -> str:
+        """Render state as a dense scaffold for model injection.
+
+        Hard constraints are preserved in full when truncation is necessary.
+        A budget too small to contain them fails explicitly.
+        """
         sections = []
+        constraint_section = None
 
         if self.role or self.style:
             sections.append(f"## Identity\nRole: {self.role}\nStyle: {self.style}")
@@ -81,7 +80,10 @@ class SessionState:
             sections.append("## Artifacts Produced\n" + "\n".join(f"- {a}" for a in self.artifacts))
 
         if self.constraints:
-            sections.append("## Constraints (MUST respect)\n" + "\n".join(f"- NOT: {c}" for c in self.constraints))
+            constraint_section = "## Constraints (MUST respect)\n" + "\n".join(
+                f"- NOT: {constraint}" for constraint in self.constraints
+            )
+            sections.append(constraint_section)
 
         if self.open_threads:
             sections.append("## Open Threads\n" + "\n".join(f"- {t}" for t in self.open_threads))
@@ -97,36 +99,43 @@ class SessionState:
 
         scaffold = "\n\n".join(sections)
 
-        # Trim to budget if needed (rough: 1 token ≈ 4 chars)
-        char_budget = token_budget * 4
+        # Enforce the documented approximate budget (rough: 1 token ≈ 4 chars)
+        # without mutating the underlying state while rendering it.
+        char_budget = max(0, approx_token_budget * 4)
         if len(scaffold) > char_budget:
-            scaffold = self._trim_to_budget(scaffold, char_budget)
+            if constraint_section is not None:
+                priority_sections = list(sections)
+                priority_sections.remove(constraint_section)
+                priority_sections.insert(0, constraint_section)
+                scaffold = "\n\n".join(priority_sections)
+            scaffold = self._trim_to_budget(
+                scaffold,
+                char_budget,
+                required_prefix=constraint_section or "",
+            )
 
         return scaffold
 
-    def _trim_to_budget(self, scaffold: str, char_budget: int) -> str:
-        """Trim least important state to fit budget. Drop from bottom up."""
-        # Priority: constraints > goal > decisions > facts > artifacts > open > uncertainties > vocabulary
-        # Trim uncertainties first, then vocabulary, then open_threads, etc.
+    def _trim_to_budget(
+        self,
+        scaffold: str,
+        char_budget: int,
+        required_prefix: str = "",
+    ) -> str:
+        """Return a visibly truncated scaffold without dropping required text."""
         if len(scaffold) <= char_budget:
             return scaffold
 
-        # Aggressive: drop uncertainties
-        self.uncertainties = self.uncertainties[:3]
-        # Drop oldest facts (keep recent)
-        if len(self.facts) > 10:
-            self.facts = self.facts[-10:]
-        # Drop oldest artifacts (keep recent)
-        if len(self.artifacts) > 5:
-            self.artifacts = self.artifacts[-5:]
-        # Trim vocabulary
-        if len(self.vocabulary) > 10:
-            keys = list(self.vocabulary.keys())
-            for k in keys[:-10]:
-                del self.vocabulary[k]
-
-        # Re-render
-        return self.to_scaffold(token_budget=len(scaffold) // 4)
+        marker = "\n\n[State truncated]"
+        if required_prefix and len(required_prefix) + len(marker) > char_budget:
+            raise ValueError(
+                "approx_token_budget is too small to preserve hard constraints"
+            )
+        if char_budget <= 0:
+            return ""
+        if char_budget <= len(marker):
+            return marker[:char_budget]
+        return scaffold[: char_budget - len(marker)].rstrip() + marker
 
 
 # ── State Updater ────────────────────────────────────────────────────────────
@@ -159,53 +168,55 @@ Respond ONLY with valid JSON. Be precise and terse. Every word costs tokens."""
 
 
 def extract_state_delta(
-    state: SessionState,
+    state: ConversationState,
     user_message: str,
     assistant_response: str,
     model: str = "qwen3.5:4b",
     ollama_url: str = "http://localhost:11434",
 ) -> dict:
     """Use a small model to extract state changes from a conversation turn."""
-    prompt = UPDATE_PROMPT.format(
-        current_state=state.to_scaffold(token_budget=2000),
-        user_message=user_message[:1000],
-        assistant_response=assistant_response[:1000],
-    )
-
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": 512},
-    }).encode()
-
-    req = urllib.request.Request(
-        f"{ollama_url}/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-
     try:
+        prompt = UPDATE_PROMPT.format(
+            current_state=state.to_scaffold(approx_token_budget=2000),
+            user_message=user_message[:1000],
+            assistant_response=assistant_response[:1000],
+        )
+
+        payload = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.1, "num_predict": 512},
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{ollama_url}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
             content = data.get("message", {}).get("content", "")
             content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
             # Try to extract JSON
-            m = re.search(r'\{.*\}', content, re.DOTALL)
-            if m:
-                return json.loads(m.group(0))
+            start = content.find("{")
+            if start >= 0:
+                decoded, _ = json.JSONDecoder().raw_decode(content[start:])
+                if isinstance(decoded, dict):
+                    return decoded
     except Exception as e:
-        print(f"[lpci] State extraction failed: {e}")
+        print(f"[langquant] State extraction failed: {e}")
 
     return {}
 
 
-def apply_delta(state: SessionState, delta: dict) -> None:
+def apply_delta(state: ConversationState, delta: dict) -> None:
     """Apply extracted state changes to the session state."""
-    if "goal" in delta:
+    if isinstance(delta.get("goal"), str):
         state.goal = delta["goal"]
-    if "style" in delta:
+    if isinstance(delta.get("style"), str):
         state.style = delta["style"]
 
     for key, attr in [
@@ -217,51 +228,61 @@ def apply_delta(state: SessionState, delta: dict) -> None:
         ("add_open_threads", "open_threads"),
         ("add_uncertainties", "uncertainties"),
     ]:
-        if key in delta and isinstance(delta[key], list):
-            getattr(state, attr).extend(delta[key])
+        if isinstance(delta.get(key), list):
+            target = getattr(state, attr)
+            for item in delta[key]:
+                if isinstance(item, str) and item not in target:
+                    target.append(item)
 
     for key, attr in [
         ("remove_subgoals", "subgoals"),
         ("remove_open_threads", "open_threads"),
         ("remove_uncertainties", "uncertainties"),
     ]:
-        if key in delta and isinstance(delta[key], list):
+        if isinstance(delta.get(key), list):
+            removals = [item.lower() for item in delta[key] if isinstance(item, str)]
             current = getattr(state, attr)
-            for item in delta[key]:
-                # Fuzzy remove — match if item is substring of any existing entry
-                setattr(state, attr, [x for x in current if item.lower() not in x.lower()])
+            setattr(
+                state,
+                attr,
+                [item for item in current if not any(term in item.lower() for term in removals)],
+            )
 
     if "add_vocabulary" in delta and isinstance(delta["add_vocabulary"], dict):
-        state.vocabulary.update(delta["add_vocabulary"])
+        state.vocabulary.update({
+            key: value
+            for key, value in delta["add_vocabulary"].items()
+            if isinstance(key, str) and isinstance(value, str)
+        })
 
     state.turn += 1
 
 
-# ── LPCI Session ─────────────────────────────────────────────────────────────
+# ── LangQuant Session ────────────────────────────────────────────────────────
 
-class LPCISession:
+class LangQuantSession:
     """
     A conversation session where the model only ever sees:
       [state scaffold] + [current message]
 
-    No conversation history. The scaffold IS the memory.
+    The transcript is retained for the human interface, not sent to the model.
     """
 
     def __init__(
         self,
         main_model: str = "qwen3.5:9b",
         state_model: str = "qwen3.5:4b",
-        token_budget: int = 7000,
+        approx_token_budget: int = 7000,
         ollama_url: str = "http://localhost:11434",
     ):
         self.main_model = main_model
         self.state_model = state_model
-        self.token_budget = token_budget
+        self.approx_token_budget = approx_token_budget
         self.ollama_url = ollama_url
-        self.state = SessionState()
+        self.state = ConversationState()
 
-        # UI-only history (not sent to model)
-        self.history: list[dict] = []
+        # UI-only transcript (not sent to model)
+        self.transcript: list[dict] = []
 
     def configure(self, role: str = "", style: str = "", goal: str = "", constraints: list[str] | None = None):
         """Set initial session parameters."""
@@ -280,7 +301,7 @@ class LPCISession:
         After response, scaffold refreshes with new state.
         """
         # Build what the model sees
-        scaffold = self.state.to_scaffold(token_budget=self.token_budget)
+        scaffold = self.state.to_scaffold(approx_token_budget=self.approx_token_budget)
 
         messages = [
             {"role": "system", "content": scaffold},
@@ -310,9 +331,9 @@ class LPCISession:
         except Exception as e:
             response = f"[Error: {e}]"
 
-        # Store in UI history (human-readable, not sent to model)
-        self.history.append({"role": "user", "content": user_message})
-        self.history.append({"role": "assistant", "content": response})
+        # Store in UI transcript (human-readable, not sent to model)
+        self.transcript.append({"role": "user", "content": user_message})
+        self.transcript.append({"role": "assistant", "content": response})
 
         # Refresh state: extract delta and apply
         delta = extract_state_delta(
@@ -328,11 +349,11 @@ class LPCISession:
 
     def show_state(self) -> str:
         """Show current scaffold (what the model would see)."""
-        return self.state.to_scaffold(token_budget=self.token_budget)
+        return self.state.to_scaffold(approx_token_budget=self.approx_token_budget)
 
-    def show_history(self) -> list[dict]:
-        """Show UI history (what the user sees)."""
-        return self.history
+    def show_transcript(self) -> list[dict]:
+        """Show the UI transcript (what the user sees)."""
+        return self.transcript
 
     def save_state(self, path: str) -> None:
         """Persist state to disk."""
@@ -344,7 +365,7 @@ class LPCISession:
         """Restore state from disk."""
         with open(path) as f:
             data = json.load(f)
-        self.state = SessionState(**data)
+        self.state = ConversationState(**data)
 
 
 # ── Interactive CLI ──────────────────────────────────────────────────────────
@@ -352,18 +373,26 @@ class LPCISession:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description="LPCI — Linguistically Persistent Cognitive Interface")
+    parser = argparse.ArgumentParser(
+        prog="langquant",
+        description="Hold conversational state outside the chat transcript.",
+    )
     parser.add_argument("--model", default="qwen3.5:9b", help="Main conversation model")
     parser.add_argument("--state-model", default="qwen3.5:4b", help="Model for state extraction")
-    parser.add_argument("--budget", type=int, default=7000, help="Token budget for scaffold")
+    parser.add_argument(
+        "--budget",
+        type=int,
+        default=7000,
+        help="Approximate token budget for the state scaffold",
+    )
     parser.add_argument("--role", default="helpful assistant", help="Model role")
     parser.add_argument("--goal", default="", help="Initial session goal")
     args = parser.parse_args()
 
-    session = LPCISession(
+    session = LangQuantSession(
         main_model=args.model,
         state_model=args.state_model,
-        token_budget=args.budget,
+        approx_token_budget=args.budget,
     )
     session.configure(
         role=args.role,
@@ -371,8 +400,11 @@ def main():
         goal=args.goal,
     )
 
-    print(f"LPCI session started | model: {args.model} | state: {args.state_model} | budget: {args.budget} tokens")
-    print("Commands: /state (show scaffold), /history (show turns), /save <path>, /quit")
+    print(
+        f"LangQuant session started | model: {args.model} | "
+        f"state: {args.state_model} | approximate budget: {args.budget} tokens"
+    )
+    print("Commands: /state (show scaffold), /transcript (show turns), /save <path>, /quit")
     print("-" * 60)
 
     while True:
@@ -391,8 +423,8 @@ def main():
             print(session.show_state())
             print("--- END SCAFFOLD ---")
             continue
-        if user_input == "/history":
-            for msg in session.show_history():
+        if user_input == "/transcript":
+            for msg in session.show_transcript():
                 role = msg["role"]
                 content = msg["content"][:200]
                 print(f"[{role}] {content}...")
@@ -409,7 +441,3 @@ def main():
 
         print(f"\nassistant: {response}")
         print(f"\n[turn {session.state.turn} | {elapsed:.1f}s | state: {len(session.show_state())} chars]")
-
-
-if __name__ == "__main__":
-    main()
