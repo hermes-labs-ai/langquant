@@ -167,6 +167,31 @@ def test_chat_payload_preserves_constraints_under_budget():
     assert f"## Constraints (MUST respect)\n- NOT: {constraint}" in scaffold
 
 
+def test_chat_gracefully_handles_updater_constraint_budget_failure(capsys):
+    constraint = "preserve this hard boundary " * 400
+    session = LangQuantSession(approx_token_budget=7000)
+    session.state = ConversationState(constraints=[constraint])
+    requests = []
+
+    def fake_urlopen(request, timeout):
+        requests.append((json.loads(request.data), timeout))
+        return _FakeResponse({"message": {"content": "main reply"}})
+
+    with patch("langquant.core.urllib.request.urlopen", side_effect=fake_urlopen):
+        reply = session.chat("current user text")
+
+    assert reply == "main reply"
+    assert requests[0][1] == 120
+    assert len(requests) == 1
+    assert session.transcript == [
+        {"role": "user", "content": "current user text"},
+        {"role": "assistant", "content": "main reply"},
+    ]
+    assert session.state.constraints == [constraint]
+    assert session.state.turn == 1
+    assert "State extraction failed" in capsys.readouterr().out
+
+
 def test_apply_delta_removes_multiple_items_and_deduplicates_additions():
     state = ConversationState(
         subgoals=["alpha task", "beta task", "gamma task"],

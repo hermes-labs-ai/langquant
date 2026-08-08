@@ -175,27 +175,27 @@ def extract_state_delta(
     ollama_url: str = "http://localhost:11434",
 ) -> dict:
     """Use a small model to extract state changes from a conversation turn."""
-    prompt = UPDATE_PROMPT.format(
-        current_state=state.to_scaffold(approx_token_budget=2000),
-        user_message=user_message[:1000],
-        assistant_response=assistant_response[:1000],
-    )
-
-    payload = json.dumps({
-        "model": model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": False,
-        "think": False,
-        "options": {"temperature": 0.1, "num_predict": 512},
-    }).encode()
-
-    req = urllib.request.Request(
-        f"{ollama_url}/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-
     try:
+        prompt = UPDATE_PROMPT.format(
+            current_state=state.to_scaffold(approx_token_budget=2000),
+            user_message=user_message[:1000],
+            assistant_response=assistant_response[:1000],
+        )
+
+        payload = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+            "think": False,
+            "options": {"temperature": 0.1, "num_predict": 512},
+        }).encode()
+
+        req = urllib.request.Request(
+            f"{ollama_url}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+
         with urllib.request.urlopen(req, timeout=30) as resp:
             data = json.loads(resp.read())
             content = data.get("message", {}).get("content", "")
