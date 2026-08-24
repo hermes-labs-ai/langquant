@@ -8,6 +8,12 @@ estimator per session, and updates results/lpci_rigorous_summary.jsonl.
 The current rigorous rows do not persist the scaffold field consumed by the
 estimator, and the downstream helper falls back to response text. This makes
 the historical output non-discriminating. See docs/EXPERIMENTS.md.
+
+RETRACTED ARTIFACT: the near-zero transfer-entropy result this script can
+reproduce is a code artifact, not a measurement, and is never citable. The
+citable result from the same continuity run is the probe-score contrast in
+docs/EXPERIMENTS.md ("Reported harness outputs"): naked 0.846 vs raw 0.000,
+n=15 completed sessions per arm (naive summary 0.792, n=15).
 """
 
 import json
