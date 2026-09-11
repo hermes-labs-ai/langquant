@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- README, `TODO.md`, `AGENTS.md`, and `llms.txt` now state which parts of the
+  repository are maintained (package, CLI, offline tests) and which are a
+  frozen research record (experiment runners and `results/`). `TODO.md` marks
+  the continuity run as completed and the transfer-entropy post-processing as
+  retracted instead of pending.
+- The public-metadata claim guard also covers `llms.txt`, `TODO.md`,
+  `AGENTS.md`, and `CHANGELOG.md`, and checks that `pyproject.toml`,
+  `CITATION.cff`, and `sbom.cdx.json` agree on the version.
+- The pre-commit configuration runs the same `ruff check` as CI (ruff 0.16.x)
+  and no longer runs the formatter, which would have rewritten the frozen
+  research scripts.
+
 ## v0.1.0 (2026-08-08)
 
 ### Added

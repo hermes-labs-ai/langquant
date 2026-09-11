@@ -13,10 +13,12 @@ langquant/
 ├── continuity_experiment.py       # Five-condition continuity experiment
 ├── analyze_results.py   # Information-theoretic analysis (MI, KL, transfer entropy)
 ├── run_experiment.py    # Scaffold amplification matrix harness
+├── tests/               # Offline tests: request boundary, budgets, claim guard
+├── docs/EXPERIMENTS.md  # Experiment record and claim limits
 ├── results/             # JSONL experiment artifacts (continuity + matrix run)
 ├── tasks/               # Task definitions for matrix run
 ├── LOG.md               # Development log
-└── TODO.md              # Future work
+└── TODO.md              # Roadmap: done/superseded items and unscheduled model runs
 ```
 
 ## Key concepts
@@ -51,10 +53,18 @@ python analyze_results.py
 
 ## Running tests
 
+The unit tests mock the model calls and do not need Ollama or the
+`experiments` extra. This is the CI command set:
+
 ```bash
-pip install pytest pyitlib scipy numpy
-pytest -v
+python -m pip install -e ".[dev]"
+python -m pytest -q
+ruff check .
 ```
+
+`tests/test_public_metadata_claims.py` is the claim guard: it fails if a public
+surface carries a retracted result or if the version differs between
+`pyproject.toml`, `CITATION.cff`, and `sbom.cdx.json`.
 
 ## Style
 

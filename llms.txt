@@ -11,13 +11,15 @@ Current evidence boundary:
 - Historical transfer-entropy outputs are invalid for claim use; see docs/EXPERIMENTS.md
 - Continuity runs used qwen3.5:9b (main) + qwen3.5:4b (state extractor)
 
-Stack: Python 3.11+, Ollama (local), pyitlib + scipy for information-theoretic analysis.
+Stack: Python 3.11+, Ollama (local); the `experiments` extra adds numpy, pyitlib and scipy for the frozen analysis scripts.
+
+Maintained: the `langquant` package, CLI, and offline tests. Frozen: experiment runners and `results/` artifacts (research record, no claim-bearing rerun scheduled).
 
 ## Docs
 - [README](README.md): Architecture, quick start, current evidence boundary
 - [Experiment record](docs/EXPERIMENTS.md): Methods, result provenance, scorer and estimator limitations
 - [LOG](LOG.md): Complete development log with experiment details
-- [TODO](TODO.md): Future work and practical applications roadmap
+- [TODO](TODO.md): Roadmap; records which experiment items are done or superseded and which still need a local model run
 
 ## Code
 - [langquant](langquant/): Core package — ConversationState, LangQuantSession, state extraction, scaffold refresh, interactive CLI

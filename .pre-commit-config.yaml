@@ -1,10 +1,12 @@
+# Mirrors the CI lint step (`ruff check .`, ruff ~=0.16.1). The formatter is
+# intentionally not run: it would rewrite the frozen research scripts whose
+# per-file-ignores in pyproject.toml exist to keep them byte-identical to the
+# versions that produced the committed results.
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+    rev: v0.16.7
     hooks:
       - id: ruff
-        args: [--fix]
-      - id: ruff-format
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
