@@ -1,21 +1,33 @@
 """Public-metadata claim guard.
 
-The repository's public metadata surfaces (Zenodo deposit metadata, CITATION.cff,
-README, pyproject) must not carry the retracted transfer-entropy result or the
-n=74 mislabel beside the two-arm probe-score contrast. docs/EXPERIMENTS.md is the
-one place that may discuss the retraction history, so it is excluded here.
+The repository's public surfaces (Zenodo deposit metadata, CITATION.cff, README,
+pyproject, llms.txt, TODO, AGENTS, CHANGELOG) must not carry the retracted
+transfer-entropy result or the n=74 mislabel beside the two-arm probe-score
+contrast. docs/EXPERIMENTS.md is the one place that may discuss the retraction
+history, and LOG.md is a chronological log with an evidence notice at its top,
+so both are excluded here.
 """
 from __future__ import annotations
 
 import json
 import re
+import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-CLAIM_SURFACES = [".zenodo.json", "CITATION.cff", "README.md", "pyproject.toml"]
+CLAIM_SURFACES = [
+    ".zenodo.json",
+    "CITATION.cff",
+    "README.md",
+    "pyproject.toml",
+    "llms.txt",
+    "TODO.md",
+    "AGENTS.md",
+    "CHANGELOG.md",
+]
 
 # A positive transfer-entropy claim (a TE number, "TE ≈ 0", or "Markov state"
 # framing) is retracted; the phrase "transfer-entropy retraction" is allowed.
@@ -52,3 +64,12 @@ def test_zenodo_metadata_matches_citation() -> None:
     # The deposit description must restate the citation abstract's evidence
     # boundary, not a stronger claim.
     assert "documented as limitations" in zenodo["description"]
+
+
+def test_version_surfaces_agree() -> None:
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        package_version = tomllib.load(stream)["project"]["version"]
+    cff = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+    sbom = json.loads((ROOT / "sbom.cdx.json").read_text(encoding="utf-8"))
+    assert _cff_scalar(cff, "version") == package_version
+    assert sbom["metadata"]["component"]["version"] == package_version

@@ -143,6 +143,19 @@ retrieval, or full transcripts.
 
 LangQuant is an alpha research prototype. The useful, inspectable result today is the mechanism itself: a local conversation can be wired through explicit current state while keeping prior messages out of the conversational-model request.
 
+**Maintained:** the `langquant` package, the `langquant` CLI, and the offline
+test suite. Install from PyPI as shown above; the default models, `qwen3.5:9b`
+and `qwen3.5:4b`, are the Ollama library tags the package and experiments used.
+
+**Frozen:** the experiment runners (`conversation_ab_experiment.py`,
+`continuity_experiment.py`, `run_experiment.py`, `run_raw.py`,
+`resume_continuity_experiment.py`, `postprocess_te.py`), `analyze_results.py`,
+and the artifacts under `results/`. They are the research record behind
+[the experiment record](https://github.com/hermes-labs-ai/langquant/blob/main/docs/EXPERIMENTS.md),
+they run only against a local Ollama service, and no claim-bearing rerun is
+scheduled. Their historical transfer-entropy outputs are retracted; read that
+document before quoting any number from them.
+
 Good contributions include stronger state schemas, validated state deltas, deterministic evaluation, exact budget enforcement, model-provider adapters, and tools for comparing state against the transcript it replaces.
 
 See the [contribution guide](https://github.com/hermes-labs-ai/langquant/blob/main/CONTRIBUTING.md)
