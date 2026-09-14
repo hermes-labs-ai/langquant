@@ -49,6 +49,7 @@ Homepage = "https://hermes-labs.ai"
 Repository = "https://github.com/hermes-labs-ai/langquant"
 Issues = "https://github.com/hermes-labs-ai/langquant/issues"
 Changelog = "https://github.com/hermes-labs-ai/langquant/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/hermes-labs-ai/langquant#readme"
 
 [project.scripts]
 langquant = "langquant.cli:main"
