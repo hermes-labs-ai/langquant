@@ -1,5 +1,7 @@
 # LangQuant
 
+[![CI](https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml/badge.svg)](https://github.com/hermes-labs-ai/langquant/actions/workflows/ci.yml)
+
 **Hold the state of a conversation outside the chat.**
 
 LangQuant is experimental Python software for conversing with a local LLM from an explicit, refreshable language state instead of replaying the transcript on every turn.
