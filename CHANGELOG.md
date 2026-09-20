@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.1.1 (2026-09-19)
+
+### Added
+
+- `langquant --version` prints the installed distribution version without starting a model session.
+
 ### Changed
 
 - README, `TODO.md`, `AGENTS.md`, and `llms.txt` now state which parts of the

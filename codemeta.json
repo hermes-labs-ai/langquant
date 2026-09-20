@@ -4,12 +4,12 @@
   "name": "langquant",
   "description": "Explicit conversational state outside the chat transcript",
   "codeRepository": "https://github.com/hermes-labs-ai/langquant",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "https://spdx.org/licenses/Apache-2.0",
   "programmingLanguage": "Python",
   "runtimePlatform": "Python >=3.11",
   "identifier": [
-    "https://pypi.org/project/langquant/0.1.0/"
+    "https://pypi.org/project/langquant/0.1.1/"
   ],
   "author": [{"@type": "Person", "givenName": "Rolando", "familyName": "Bosch Rodriguez", "identifier": "https://orcid.org/0009-0005-4896-1112"}],
   "url": "https://hermes-labs.ai",
