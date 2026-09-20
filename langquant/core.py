@@ -372,11 +372,18 @@ class LangQuantSession:
 
 def main():
     import argparse
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        package_version = version("langquant")
+    except PackageNotFoundError:
+        package_version = "unknown (source checkout)"
 
     parser = argparse.ArgumentParser(
         prog="langquant",
         description="Hold conversational state outside the chat transcript.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {package_version}")
     parser.add_argument("--model", default="qwen3.5:9b", help="Main conversation model")
     parser.add_argument("--state-model", default="qwen3.5:4b", help="Model for state extraction")
     parser.add_argument(

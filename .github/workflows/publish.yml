@@ -63,6 +63,7 @@ jobs:
           "$RUNNER_TEMP/langquant-release/bin/python" -c "from langquant import ConversationState, LangQuantSession"
           "$RUNNER_TEMP/langquant-release/bin/python" -m langquant --help
           "$RUNNER_TEMP/langquant-release/bin/langquant" --help
+          "$RUNNER_TEMP/langquant-release/bin/langquant" --version
 
       - name: Publish to PyPI through trusted publishing
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1

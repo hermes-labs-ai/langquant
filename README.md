@@ -42,6 +42,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install langquant
 
+# Confirm the installed release before configuring local models
+langquant --version
+
 ollama pull qwen3.5:9b
 ollama pull qwen3.5:4b
 

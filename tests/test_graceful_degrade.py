@@ -8,6 +8,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import runpy
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -245,3 +246,16 @@ def test_resume_runner_import_is_side_effect_free(tmp_path, monkeypatch):
         "clamped",
         "naive",
     )
+
+
+def test_version_flag_reads_installed_distribution_metadata(capsys, monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["langquant", "--version"])
+    with (
+        patch("importlib.metadata.version", return_value="0.1.0"),
+        patch.object(core, "LangQuantSession") as session,
+        pytest.raises(SystemExit) as exc,
+    ):
+        core.main()
+    assert exc.value.code == 0
+    assert capsys.readouterr().out == "langquant 0.1.0\n"
+    session.assert_not_called()
