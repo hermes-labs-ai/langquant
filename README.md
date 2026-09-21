@@ -6,6 +6,10 @@
 
 LangQuant is experimental Python software for conversing with a local LLM from an explicit, refreshable language state instead of replaying the transcript on every turn.
 
+LangQuant is developed by [Hermes Labs](https://hermes-labs.ai).
+
+Hermes Labs studies failure modes in agent and LLM systems, develops open-source tools that treat language as part of the runtime, and works with teams to remediate reliability failures in production.
+
 The conversational model receives only the current state and the current message. A second model reads the latest exchange and prepares the next state. The transcript can remain visible to the human without becoming model input.
 
 ```text
