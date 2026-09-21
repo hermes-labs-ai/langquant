@@ -40,6 +40,6 @@ Maintained: the `langquant` package, CLI, and offline tests. Frozen: experiment 
 
 ## About Hermes Labs
 
-Hermes Labs is an independent AI-reliability lab building open-source tools that catch silent failure modes in production AI.
+Hermes Labs studies failure modes in agent and LLM systems, develops open-source tools that treat language as part of the runtime, and works with teams to remediate reliability failures in production.
 
 https://hermes-labs.ai
